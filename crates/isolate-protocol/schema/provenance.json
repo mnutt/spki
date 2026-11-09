@@ -1,0 +1,28 @@
+{
+  "isolate-host.capnp": "mnutt/isolate-host v0.1.1 protocol (vendored from Sandstorm POC)",
+  "isolate-worker-source.capnp": "mnutt/isolate-host v0.1.1 protocol (vendored from Sandstorm POC)",
+  "capnp/compat/http-over-capnp.capnp": "Cap'n Proto HTTP protocol; retains upstream MIT notice",
+  "capnp/compat/byte-stream.capnp": "Cap'n Proto ByteStream protocol",
+  "capnp/c++.capnp": "Cap'n Proto annotation declarations; no C++ code is compiled",
+  "note": "Vendored snapshots; builds never read another checkout. Protocol IDs and ordinals are preserved.",
+  "sha256": {
+    "capnp/c++.capnp": "fb306076cd38c27af1aed20fac6395e9a46fbe5b5df6a248b5f1b6845a079c44",
+    "capnp/compat/byte-stream.capnp": "452868a54465ec9c49c83d50e6d8d26d8d61f3d01e18ad3cbe421d1e348d724d",
+    "capnp/compat/http-over-capnp.capnp": "7fe8b0f3359294179668fcd81c8986a68e48572ac41d9f2708075786e2365f47",
+    "isolate-host.capnp": "9d99cb8f541abac06229d6e71b1caa4f25b03a62410d91d0be26a32fdd7e2b32",
+    "isolate-worker-source.capnp": "29c5cb9fd7cfe5d7541e3214717013889f6567cf92bf4e15c17048706a63f21a",
+    "sandstorm/activity.capnp": "59542dc8eaedddf276d4309341c51fa8ebb492bee1895c7dd8cf4992ad2d72d6",
+    "sandstorm/api-session.capnp": "b944006d2e20ee5f0e3c781ac58def58d3fb744b2288993f8dc1aa10c80a34bc",
+    "sandstorm/grain.capnp": "3522867cffb272813a7182e695b2b93991fc4d20ec893a2a7ba6bb3d7b503e58",
+    "sandstorm/identity.capnp": "9d11a96dd16b0927486b765da3c653563757c668a2e49d77c205c04c1509c515",
+    "sandstorm/isolate-bridge.capnp": "726a04ab9ec511042ec73174af60bbd7d1eee672a74191cd6d38a681d50fde74",
+    "sandstorm/outbound-http-session.capnp": "20a2309e8f1c4b02eccb7a613773ce749ea04b4b31a91eb785711b02c4e8a088",
+    "sandstorm/powerbox.capnp": "55a4e2e4ccdced943fd6c8591279738588c852eee42009f8c921f4c9b62dac51",
+    "sandstorm/util.capnp": "b10a7142c705b21c64fae393ef1a1d738f64ee1945c28cac4af125341f31bbe0",
+    "sandstorm/web-session.capnp": "7162685ee1f0b88dc38e237e20f6629500c9a0144e7c9428008a5ed42f63eba3",
+    "supervisor-probe.capnp": "33a250eadb4803621f0828aa1cc63c0694b1c992fb7d635c9d9678c9490535f8"
+  },
+  "sandstorm/*.capnp": "Public Sandstorm application schemas, vendored from marketplace-grain; Apache-2.0. No server implementation is linked.",
+  "supervisor-probe.capnp": "Local test-only projection of Supervisor.getMainView, preserving interface ID and method ordinal.",
+  "sandstorm/api-session.capnp": "Local marker projection of public ApiSession; preserves interface ID and WebSession inheritance."
+}

@@ -1,0 +1,21 @@
+[workspace]
+members = ["crates/isolate-protocol", "crates/isolate-preview", "crates/spki"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+capnp = "0.27"
+capnp-rpc = "0.27"
+capnpc = "0.27"
+tokio = { version = "1", features = ["rt", "macros", "net", "time", "process", "io-util", "io-std", "sync"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+futures = "0.3"
+anyhow = "1"
+
+# Compression is prohibitively slow without optimization, even in a debug CLI build.
+[profile.dev.package.lzma-rust2]
+opt-level = 3

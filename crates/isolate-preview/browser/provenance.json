@@ -1,0 +1,9 @@
+{
+  "source": "Sandstorm isolates-rebased src/sandstorm/isolate/browser-client.js",
+  "commit": "efe266500207bc437ea7cfbedaa5b2ee1936d442",
+  "sha256": "7019940ac8779c4dd437e07a53c94eaaf4dec57e6d22fe162128209110b179e7",
+  "localChanges": [
+    "Close the RPC connection when its transport closes, rejecting outstanding calls."
+  ],
+  "license": "Apache-2.0; see ../sdk/LICENSE-Sandstorm"
+}

@@ -1,0 +1,25 @@
+[package]
+name = "spki"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tokio.workspace = true
+isolate-preview = { path = "../isolate-preview" }
+clap = { version = "4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+tempfile = "3"
+libc = "0.2"
+capnp.workspace = true
+ed25519-dalek = "3"
+sha2 = "0.11"
+lzma-rust2 = "0.23"
+getrandom = "0.4"
+
+[build-dependencies]
+capnpc.workspace = true

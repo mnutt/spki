@@ -1,0 +1,19 @@
+{
+  "source": "Public SDK schemas from Sandstorm custom.2026-11-07_09-20-15; parser input only, no server implementation linked. Original license notices retained.",
+  "sha256": {
+    "capnp/c++.capnp": "fb306076cd38c27af1aed20fac6395e9a46fbe5b5df6a248b5f1b6845a079c44",
+    "capnp/persistent.capnp": "d77d4d2e2c1e9c42ded13de54ed11b535b076ac210945b53ecf76fd7648a867a",
+    "capnp/stream.capnp": "5b0656ca3daca9ef28740c14813d5dd474fd0f9991ce99f652838f4cccf6fb30",
+    "sandstorm/activity.capnp": "59542dc8eaedddf276d4309341c51fa8ebb492bee1895c7dd8cf4992ad2d72d6",
+    "sandstorm/api-session.capnp": "969513510ffc46b57f0bd61940de85172938df0623920d9e24855e05d48a321f",
+    "sandstorm/grain.capnp": "3522867cffb272813a7182e695b2b93991fc4d20ec893a2a7ba6bb3d7b503e58",
+    "sandstorm/identity.capnp": "9d11a96dd16b0927486b765da3c653563757c668a2e49d77c205c04c1509c515",
+    "sandstorm/ip.capnp": "b938e6ff67adcff64146bd8015bf8b57d00461a9746bc415274c8dbb196c2b5b",
+    "sandstorm/package.capnp": "ec1798f144c3942aeb31ee5740e5707e3254416482b42d1d56a39838e0a84465",
+    "sandstorm/powerbox.capnp": "55a4e2e4ccdced943fd6c8591279738588c852eee42009f8c921f4c9b62dac51",
+    "sandstorm/supervisor.capnp": "a651a766ad172d661bf11a41356e2b5060b471a32820886b125e4f96ed9a66b0",
+    "sandstorm/util.capnp": "b10a7142c705b21c64fae393ef1a1d738f64ee1945c28cac4af125341f31bbe0",
+    "sandstorm/web-session.capnp": "0486c16bfcd04aa5238ffd45068a7663508edee24b0d425dd111abb7262db699",
+    "spki/project.capnp": "858c16b2b0553ee1a2537604f894d805d60e874aedd50a9ee2ec35e9cab6b77b"
+  }
+}

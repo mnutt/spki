@@ -1,0 +1,9 @@
+{
+  "version": "0.1.2",
+  "platform": "linux-x86_64",
+  "url": "https://github.com/mnutt/isolate-host/releases/download/v0.1.2/isolate-host-0.1.2-linux-x86_64.tar.xz",
+  "archiveSha256": "f7bb6338fe5039d7ec907c787a20aa5ba0da9525d11bbe3e9f73690c32e3c4f0",
+  "binarySha256": "94b04f0ed5ad0f3ff862dcadd1b7edfe6cad1717587a60b7d8e6775541b538b1",
+  "protocolVersion": 1,
+  "sourceFormatVersion": 1
+}

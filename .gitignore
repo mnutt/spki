@@ -1,0 +1,10 @@
+.codex/skills/sandstorm-app-author/
+.claude/skills/sandstorm-app-author/
+
+build/
+.sandstorm/.generated/
+.sandstorm/box.local.toml
+
+target/
+
+node_modules/
