@@ -75,9 +75,11 @@ impl web::web_socket_stream::Server for Input {
 }
 pub fn connect(
     client: web::web_socket_stream::Client,
-    worker: Rc<crate::bridge::Worker>,
+    runtime: &Rc<crate::Runtime>,
+    headers: Vec<(String, String)>,
     session: &Rc<crate::bridge::Session>,
 ) -> capnp::Result<web::web_socket_stream::Client> {
+    let worker = runtime.bridge.clone();
     let session_slot = session
         .socket_slots
         .clone()
@@ -93,6 +95,11 @@ pub fn connect(
     let (mut output, input) = tokio::io::split(raw);
     let mut stopped = worker.stopped.subscribe();
     let bootstrap: browser_isolate_bridge::Client = capnp_rpc::new_client(crate::bridge::Browser {
+        application: Some(crate::bridge::Application {
+            runtime: Rc::downgrade(runtime),
+            headers,
+            capability: tokio::sync::OnceCell::new(),
+        }),
         worker,
         session: Rc::downgrade(session),
     });

@@ -3,6 +3,7 @@
 using Util = import "/sandstorm/util.capnp";
 
 interface BrowserCounter {
+  session @5 () -> (id :Text);
   read @0 () -> (value :Int32);
   increment @1 (amount :Int32) -> (value :Int32);
   reset @2 () -> (value :Int32);

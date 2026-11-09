@@ -54,8 +54,8 @@
     "sandstorm/identity.capnp": "3fdfcec0107f3b05bbde35447d6dab98173d4109bc3bbaa314eb568408a31505",
     "capnp:/sandstorm/isolate-authoring.capnp": "43fa17cb372aed521720ef0a45cee4ca80520e0b4d10ea78801f253c278242a9",
     "sandstorm/isolate-authoring.capnp": "43fa17cb372aed521720ef0a45cee4ca80520e0b4d10ea78801f253c278242a9",
-    "capnp:/sandstorm/isolate-bridge.capnp": "e99a5a912308c7dde9679dae9b5933b1ab68a02dda4edc968cf0f155d26ea05d",
-    "sandstorm/isolate-bridge.capnp": "e99a5a912308c7dde9679dae9b5933b1ab68a02dda4edc968cf0f155d26ea05d",
+    "capnp:/sandstorm/isolate-bridge.capnp": "da0eb992672de3b6a0bbe14a5ba24ada0ce301fec6df283c43a5e374eab512a2",
+    "sandstorm/isolate-bridge.capnp": "da0eb992672de3b6a0bbe14a5ba24ada0ce301fec6df283c43a5e374eab512a2",
     "capnp:/sandstorm/outbound-http-session.capnp": "4fb18b69e998e7ca04f322512a0d8b6c3db640dc00698b383aad06fc8dbb1583",
     "sandstorm/outbound-http-session.capnp": "4fb18b69e998e7ca04f322512a0d8b6c3db640dc00698b383aad06fc8dbb1583",
     "capnp:/sandstorm/powerbox.capnp": "d18b5a237108354bc2cdbf9d78cd0efdff3318cc41714704067aa83c9ff45090",
@@ -67,5 +67,8 @@
     "sandstorm:api": "b9755f1cd755256e2392ae46045cd7ffb2efe0886a4b38b5a9ed26644232001c",
     "sandstorm-internal:validation": "e53a24514f98751399ee9cc0c1e77b545978bd60360801ebc1c54f2d029731d4",
     "sandstorm-internal:capnp-runtime": "d5c4251f407413c404727c5d86d6a063418d0312689ddd649f73e74be7f88fef"
-  }
+  },
+  "localChanges": [
+    "Regenerate isolate-bridge.capnp with the additive SPKI getApplication method."
+  ]
 }

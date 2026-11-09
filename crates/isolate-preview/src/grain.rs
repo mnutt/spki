@@ -190,10 +190,11 @@ impl web::Server for Session {
                 "unknown WebSocket endpoint".into(),
             ));
         }
-        let worker = self.controller.snapshot().1.bridge.clone();
+        let runtime = self.controller.snapshot().1;
         results.get().set_server_stream(crate::browser::connect(
             params.get_client_stream()?,
-            worker,
+            &runtime,
+            self.headers.clone(),
             &self.browser_session,
         )?);
         Ok(())

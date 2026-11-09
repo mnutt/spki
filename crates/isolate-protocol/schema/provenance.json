@@ -15,7 +15,7 @@
     "sandstorm/api-session.capnp": "b944006d2e20ee5f0e3c781ac58def58d3fb744b2288993f8dc1aa10c80a34bc",
     "sandstorm/grain.capnp": "3522867cffb272813a7182e695b2b93991fc4d20ec893a2a7ba6bb3d7b503e58",
     "sandstorm/identity.capnp": "9d11a96dd16b0927486b765da3c653563757c668a2e49d77c205c04c1509c515",
-    "sandstorm/isolate-bridge.capnp": "726a04ab9ec511042ec73174af60bbd7d1eee672a74191cd6d38a681d50fde74",
+    "sandstorm/isolate-bridge.capnp": "84ef5dc61c8f510a01cfd57897fca417b372dbf44334d9434dd3a3d1053d16d0",
     "sandstorm/outbound-http-session.capnp": "20a2309e8f1c4b02eccb7a613773ce749ea04b4b31a91eb785711b02c4e8a088",
     "sandstorm/powerbox.capnp": "55a4e2e4ccdced943fd6c8591279738588c852eee42009f8c921f4c9b62dac51",
     "sandstorm/util.capnp": "b10a7142c705b21c64fae393ef1a1d738f64ee1945c28cac4af125341f31bbe0",
@@ -24,5 +24,8 @@
   },
   "sandstorm/*.capnp": "Public Sandstorm application schemas, vendored from marketplace-grain; Apache-2.0. No server implementation is linked.",
   "supervisor-probe.capnp": "Local test-only projection of Supervisor.getMainView, preserving interface ID and method ordinal.",
-  "sandstorm/api-session.capnp": "Local marker projection of public ApiSession; preserves interface ID and WebSession inheritance."
+  "sandstorm/api-session.capnp": "Local marker projection of public ApiSession; preserves interface ID and WebSession inheritance.",
+  "localChanges": [
+    "Add BrowserIsolateBridge.getApplication @2 for the session-scoped application bootstrap."
+  ]
 }

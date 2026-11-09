@@ -637,3 +637,22 @@ export function connectBrowserNativeCapnp(target, InterfaceClass, options = {}) 
     transport: connection.transport,
   });
 }
+
+// SPKI application bootstrap. Resolve the entry capability before returning the client,
+// so denied connections reject here rather than surfacing as unhandled pipeline errors.
+export async function connectApplication(InterfaceClass, options = {}) {
+  if (!InterfaceClass || typeof InterfaceClass.Client !== "function") {
+    throw new TypeError("connectApplication() requires a capnp-es generated interface");
+  }
+  const connection = createBrowserNativeCapnpConnection(options);
+  try {
+    const bridge = connection.bootstrap(BrowserIsolateBridge);
+    const result = await bridge.getApplication();
+    return Object.assign(browserNativeCapnpClient(result.cap, InterfaceClass, "application bootstrap"), {
+      connection, transport: connection.transport,
+    });
+  } catch (error) {
+    connection.transport.close();
+    throw error;
+  }
+}

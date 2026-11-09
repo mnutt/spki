@@ -57,7 +57,18 @@ export default {
         },
       };
       let response;
-      try { response = await invocation.run(state, () => app.fetch(request, requestEnv, ctx)); }
+      try {
+        response = await invocation.run(state, async () => {
+          if (url.pathname === '/__spki_internal_connect') {
+            if (typeof app.connect !== 'function') {
+              return new Response('Application does not export connect()', {status: 404});
+            }
+            const exported = await app.connect(request, requestEnv, ctx);
+            return Response.json(await exported.browserHandoff(request));
+          }
+          return app.fetch(request, requestEnv, ctx);
+        });
+      }
       catch (error) { for (const channel of channels) channel.close(); throw error; }
       if (channels.size === 0) return response;
       const closed = new Promise(resolve => { state.finished = resolve; });

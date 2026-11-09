@@ -98,6 +98,14 @@ function request(webkey, route) {
     cli(['--profile','starter','init',projectDir]);
     cli(['--project',projectDir,'auth','--webkey-stdin','--allow-local-http'],developer);
     if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); }
+    assert(await frame.evaluate(async()=>{
+      const {ByteStream}=await import('/__sandstorm/capnp/sandstorm/util.capnp.js');
+      const {connectApplication}=await import('/__sandstorm/native-capnp/client.js');
+      let app;
+      try { app=await connectApplication(ByteStream); return false; }
+      catch { return true; }
+      finally { app?.transport.close(); }
+    }),'a worker without connect() must reject application bootstrap');
     progress('checking browser assets and typed capnp-es RPC');
     fs.cpSync(path.join(root,'preview/fixtures/frontend'), projectDir, {recursive:true});
     const frontendConfig=path.join(projectDir,'sandstorm-pkgdef.capnp');
@@ -115,11 +123,25 @@ function request(webkey, route) {
       return (await counter.read()).value;
     });
     assert.equal(rpcResult,6);
+    // Exercise the RPC bootstrap without a browser HTTP handoff. Existing handoffs
+    // remain covered above and below, including cross-session rejection.
+    assert.equal(await frame.evaluate(async()=>{
+      const {BrowserCounter}=await import('/__sandstorm/capnp/counter.capnp.js');
+      const {connectApplication}=await import('/__sandstorm/native-capnp/client.js');
+      const originalFetch=window.fetch;
+      window.fetch=()=>{throw new Error('bootstrap must not fetch');};
+      try {
+        window.application=await connectApplication(BrowserCounter);
+        return (await application.read()).value;
+      } finally { window.fetch=originalFetch; }
+    }),6);
+    assert.equal(await frame.evaluate(()=>fetch('/__spki_internal_connect').then(r=>r.status)),404);
+    assert.equal((await request(developer,'/__spki_internal_connect')).status,404);
     assert.deepEqual(await frame.evaluate(async()=>{
       const {ByteStream}=await import('/__sandstorm/capnp/sandstorm/util.capnp.js');
       let bytes;
       const stream=new ByteStream.Server({write(params){bytes=Array.from(params.data);}}).client();
-      await counter.echo({stream});
+      await application.echo({stream});
       return bytes;
     }),[1,2,3]);
     assert(await frame.evaluate(async()=>{
@@ -148,6 +170,14 @@ function request(webkey, route) {
         await second.waitForTimeout(100);
       }
       await other.locator('output').filter({hasText:'6'}).waitFor({timeout:15000});
+      const sessionA=await frame.evaluate(async()=>(await application.session()).id);
+      const sessionB=await other.evaluate(async()=>{
+        const {BrowserCounter}=await import('/__sandstorm/capnp/counter.capnp.js');
+        const {connectApplication}=await import('/__sandstorm/native-capnp/client.js');
+        const app=await connectApplication(BrowserCounter);
+        try { return (await app.session()).id; } finally { app.transport.close(); }
+      });
+      assert(sessionA && sessionB && sessionA!==sessionB,'bootstrap did not use each browser session');
       const handoff=await frame.evaluate(()=>window.handoff);
       const denied=await other.evaluate(async(handoff)=>{
         const {BrowserCounter}=await import('/__sandstorm/capnp/counter.capnp.js');
@@ -161,7 +191,7 @@ function request(webkey, route) {
     console.log('PASS: two browser sessions, cached worker export and session-bound handoff isolation');
     console.log('checking RPC after the host post-response deadline');
     await page.waitForTimeout(35000);
-    assert.equal(await frame.evaluate(async()=>(await counter.read()).value),7);
+    assert.equal(await frame.evaluate(async()=>(await application.read()).value),7);
     const watcher=spawn(path.join(root,'target/debug/spki'),['--project',projectDir,'dev'],{env,stdio:['ignore','pipe','pipe']});
     let output=''; watcher.stdout.on('data',data=>output+=data);watcher.stderr.on('data',data=>output+=data);
     const revisions=()=>output.split('Live revision').length-1;
@@ -175,7 +205,7 @@ function request(webkey, route) {
       let before=revisions();
       fs.writeFileSync(path.join(projectDir,'ui/style.css'),'body {color: rgb(80, 60, 40)}');
       await waitRevision(before);
-      await frame.waitForFunction(()=>counter.connection.closed);
+      await frame.waitForFunction(()=>counter.connection.closed && application.connection.closed);
       await page.unroute('**/__spki/v1/revision');
       await frame.waitForFunction(()=>getComputedStyle(document.body).color==='rgb(80, 60, 40)',{},{timeout:20000});
       await frame.locator('output').filter({hasText:'0'}).waitFor();

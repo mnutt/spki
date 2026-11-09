@@ -52,9 +52,12 @@ interface IsolateBridge @0xc4b06a6915ad0e3c {
 interface BrowserIsolateBridge @0x93fb2746c97b5bea {
   # Bootstrap capability for browser-originated native Cap'n Proto sessions.
   #
-  # This intentionally exposes only capabilities that the worker already handed
-  # to the current browser session by opaque id. It does not expose the worker
-  # SandstormApi or SessionContext authority.
+  # Exposes capabilities explicitly handed to the current browser session, or
+  # returned by the application connect() hook for that session. It does not
+  # expose the worker SandstormApi or SessionContext authority.
+
+  # SPKI extension: ask the application for this browser session's entry capability.
+  getApplication @2 () -> (cap :Capability);
 
   getHandoffCapability @0 (id :Text) -> (cap :Capability);
   # Resolves a capability that the worker explicitly handed to this browser

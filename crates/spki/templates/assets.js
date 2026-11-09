@@ -1,4 +1,5 @@
 export default {
+  connect: app.connect?.bind(app),
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     let path;

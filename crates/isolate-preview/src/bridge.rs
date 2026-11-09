@@ -169,11 +169,81 @@ impl isolate_bridge::Server for Worker {
         Ok(())
     }
 }
+pub struct Application {
+    pub runtime: Weak<crate::Runtime>,
+    pub headers: Vec<(String, String)>,
+    pub capability: tokio::sync::OnceCell<Client>,
+}
 pub struct Browser {
+    pub application: Option<Application>,
     pub worker: Rc<Worker>,
     pub session: Weak<Session>,
 }
 impl browser_isolate_bridge::Server for Browser {
+    async fn get_application(
+        self: Rc<Self>,
+        _: browser_isolate_bridge::GetApplicationParams,
+        mut results: browser_isolate_bridge::GetApplicationResults,
+    ) -> capnp::Result<()> {
+        self.worker.live()?;
+        let session = self
+            .session
+            .upgrade()
+            .ok_or_else(|| error("browser session closed"))?;
+        let application = self
+            .application
+            .as_ref()
+            .ok_or_else(|| error("application unavailable"))?;
+        let cap = application
+            .capability
+            .get_or_try_init(|| async {
+                let runtime = application
+                    .runtime
+                    .upgrade()
+                    .ok_or_else(|| error("worker replaced"))?;
+                let response = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    runtime.fetch_with_headers(
+                        isolate_protocol::http_over_capnp_capnp::HttpMethod::Post,
+                        "__spki_internal_connect",
+                        &[],
+                        &application.headers,
+                    ),
+                )
+                .await
+                .map_err(|_| error("application bootstrap timed out"))?
+                .map_err(|_| error("application bootstrap failed"))?;
+                if response.status != 200 {
+                    return Err(error("application connect() failed or is not defined"));
+                }
+                let handoff: serde_json::Value = serde_json::from_slice(&response.body)
+                    .map_err(|_| error("invalid application bootstrap"))?;
+                let id = handoff["id"]
+                    .as_str()
+                    .ok_or_else(|| error("missing application capability"))?;
+                self.worker.live()?;
+                let (owner, cap) = self
+                    .worker
+                    .handoffs
+                    .borrow_mut()
+                    .remove(id)
+                    .ok_or_else(|| error("application capability unavailable"))?;
+                if !owner
+                    .upgrade()
+                    .is_some_and(|owner| Rc::ptr_eq(&owner, &session))
+                {
+                    return Err(error("application capability belongs to another session"));
+                }
+                Ok(cap)
+            })
+            .await?;
+        results
+            .get()
+            .get_cap()
+            .set_as_capability(cap.hook.add_ref());
+        Ok(())
+    }
+
     async fn get_handoff_capability(
         self: Rc<Self>,
         params: browser_isolate_bridge::GetHandoffCapabilityParams,
@@ -254,10 +324,12 @@ mod tests {
             let result = create.send().promise.await.unwrap();
             let id = result.get().unwrap().get_id().unwrap();
             let browser: browser_isolate_bridge::Client = capnp_rpc::new_client(Browser {
+                application: None,
                 worker: worker.clone(),
                 session: Rc::downgrade(&a),
             });
             let other: browser_isolate_bridge::Client = capnp_rpc::new_client(Browser {
+                application: None,
                 worker: worker.clone(),
                 session: Rc::downgrade(&b),
             });

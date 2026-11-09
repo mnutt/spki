@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory() as temp:
     # Imported schemas must be generated and resolved in both environments.
     (project/'common.capnp').write_text('@0xbaac70a32fc785de; struct Sample { text @0 :Text; }')
     schema=project/'counter.capnp'
-    schema.write_text(schema.read_text().replace('interface BrowserCounter', 'using Common = import "common.capnp";\ninterface BrowserCounter').replace('  read @0', '  sample @5 () -> (value :Common.Sample);\n  read @0'))
+    schema.write_text(schema.read_text().replace('interface BrowserCounter', 'using Common = import "common.capnp";\ninterface BrowserCounter').replace('  read @0', '  sample @6 () -> (value :Common.Sample);\n  read @0'))
     worker=project/'worker.ts'
     worker.write_text("import {Message} from '@mnutt/capnp-es';\nexport const message = new Message();\n"+worker.read_text())
     ui=project/'ui/main.ts'
