@@ -1,0 +1,11 @@
+@0xe1c24ff9d2c3f001;
+
+using Util = import "/sandstorm/util.capnp";
+
+interface BrowserCounter {
+  read @0 () -> (value :Int32);
+  increment @1 (amount :Int32) -> (value :Int32);
+  reset @2 () -> (value :Int32);
+  wait @3 () -> ();
+  echo @4 (stream :Util.ByteStream) -> ();
+}
