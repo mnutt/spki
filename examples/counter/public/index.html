@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cap’n Proto counter</title>
+  <link rel="stylesheet" href="/assets/main.css">
+  <script type="module" src="/assets/main.js"></script>
+</head>
+<body>
+  <h1>My isolate</h1>
+  <p>Open this grain in two tabs. Counter changes are pushed to both through Cap’n Proto callbacks.</p>
+  <output id="value" aria-label="Counter value" aria-live="polite">—</output>
+  <button id="increment" type="button" disabled>Increment</button>
+  <button id="reset" type="button" disabled>Reset</button>
+  <output id="status" role="status">Connecting…</output>
+  <p>The counter resets when the worker restarts or is redeployed.</p>
+</body>
+</html>

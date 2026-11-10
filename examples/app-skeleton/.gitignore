@@ -1,0 +1,3 @@
+dist/
+.spki/
+node_modules/

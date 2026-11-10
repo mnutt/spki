@@ -1,0 +1,148 @@
+{
+  "repository": "https://github.com/sandstorm-io/sandstorm",
+  "branch": "isolates-rebased",
+  "commit": "efe266500207bc437ea7cfbedaa5b2ee1936d442",
+  "license": "Apache-2.0 (see LICENSE-Sandstorm)",
+  "examples": [
+    {
+      "upstream": "isolate-hello",
+      "path": "hello",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "c93d0a41b9b71eebbe43807112fc2a0a8f83799a5e1d6762a57e0197cab3704f",
+        "worker.js": "919e3fe97486aafc1bca4631b1c388c14bd9d63815653667c78f860534a5e7b8"
+      },
+      "adaptation": "Returns JSON describing the request. Powerbox authority is acquired through the native RPC bridge, not a legacy `env.POWERBOX` binding."
+    },
+    {
+      "upstream": "isolate-counter",
+      "path": "storage-counter",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "898b2866cb5a3880f9770b41d52a4760f44eac983861987d2c30774dfb297778",
+        "help.txt": "c3914ab751bcf7573591d7b6b1bcac7542d8960ee947ae81b334dd68227980fb",
+        "metadata.json": "dbecf54b5c034af27c2c8e28c29fad1157d56cc36a33dac52478681b936c98f9",
+        "ui.js": "7d36fe59e7b969538e7f1684b4439f84983aa74d76f08a023a827fbdd602045e",
+        "worker.js": "c7b5bb32bca01afec5efa8792675a67a5745ba04184a7670622f77508dddb640"
+      },
+      "adaptation": "Every request increments the stored value. Reload the grain or restart it to see that the value persists. The worker imports `metadata.json` and `help.txt`; the CLI bundles both."
+    },
+    {
+      "upstream": "isolate-app-skeleton",
+      "path": "app-skeleton",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "b33c46a8137e3cb6ed9807cfc1c9e75a4131ad8710a9759ff319ba6c3896cbd9",
+        "ui.js": "d82a9fc7ca378363e6dbc6e8dae417ce802f2fcffe9daec96ffd45851143edfe",
+        "worker.js": "64987a5f4f3e3ea6fedbc5ac58e49ace0e491cef792defce5f819ecfd537910f"
+      },
+      "adaptation": "The UI exercises `/hello`, `/session`, `/increment`, and `/health`. Storage persists across restarts. System routes are handled by Preview, not by the application."
+    },
+    {
+      "upstream": "isolate-browser-capnp",
+      "path": "browser-capnp",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "4b2b0fa0def5d2d0325cdd63c48be0b2a373c8e4bd5b0b6d9d1e0894302db3a8",
+        "browser-counter.capnp": "aed0d8dbf41ccdce663f6af3649029559139df76574e57e2e4e0c8c7960a907a",
+        "worker.js": "cc9f357d11ec27fbff8019d8f26d3f90a84b5bb35e1fb0b9d04341a75b1596a5"
+      },
+      "adaptation": "The browser now uses `await connectApplication(BrowserCounter)` and the worker exposes `connect(request, env)`. No `/counter-capability` HTTP handoff is needed. The value resets on worker replacement."
+    },
+    {
+      "upstream": "isolate-capnp-rpc",
+      "path": "capnp-rpc",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "b1dbab411c3a6bae5cd02e45e2152711bc84dbe9746669f170f54217e61269b0",
+        "greeter.capnp": "8b25933fe5744d14cb70aaeb40ce0698b32a612654e085ff689fcb3dc9d8b46c",
+        "greeting.capnp": "1f72c0a9cd95be8818fb9914f0552526a92ceda793875d506d865049940151b8",
+        "worker.js": "b7ca7c614036daf4ff19a9735f9b7565b2c0ea4f12d4c0b73e7d123efa68f83c"
+      },
+      "adaptation": "The root route exercises local typed RPC; `connect(request, env)` exports the same Greeter to browsers. Nested Greeting capabilities and browser callbacks are supported. The upstream durable `/export-greeter` token route is intentionally replaced with a live bootstrap capability."
+    },
+    {
+      "upstream": "isolate-object-store",
+      "path": "object-store",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "2f1e75d1bf5eb61e3083081ed057f5667c1fb697e24a31c25575d58f5f571c5f",
+        "object-store.capnp": "e2da44b1ea97055e7e4b80193f62922c88030203f8a0dafda53ea29194d62243",
+        "worker.js": "c34c0cc9eecdb5e26d86ec0d5c0aa21fcc6fbbdf1bc8606aa92ed89cfcafe72f"
+      },
+      "adaptation": "The root route lists and reads sample objects. The bootstrap exposes the same ObjectStore interface. `openObject()` returns a native read-only WebSession whose `get()` reads one object; it does not use the unimplemented route-backed capability factory. Durable export tokens are not supported."
+    },
+    {
+      "upstream": "isolate-typescript",
+      "path": "typescript",
+      "status": "runnable",
+      "upstreamSha256": {
+        "package-lock.json": "f89811e5c80e360fe626bdf395427518fd4e5c31036c78221991ab565cf5a32a",
+        ".gitignore": "cd446cc56527781766c31a3be7e148c9c4727f5ae7f3c1056382bc29c022b338",
+        "README.md": "7b959c8e3adb2b7d6fce1c57a0b09854bcfa31972021a1a6843c6ccbed82e024",
+        "package.json": "05160092a3169d0ee86f450aa86ef33376e0fa0750eaf70f7cb34bd95b48629f",
+        "sandstorm-isolate.d.ts": "2502f80c07602dd5f1045015e6304ac56cce344a04410c539f67ba4425559683",
+        "tsconfig.json": "12b91b720999270c180c819be10638f3a050c358f813577d7b07cbfaadb4fa04",
+        "typed-counter.capnp": "22a5e12415495f04b7fca03ef701745a42fa8f92ce0c6cad3806b7a815d1d0c1",
+        "typed-counter.d.ts": "f4685339aced16915a61fb9c2a6ef80ecfcfb6b4a61f01500c39b2997b9171d8",
+        "worker.ts": "8fdb2ae846f262d8c7b39755f92176fd5ea71fafe7afea88e7dc5ecae10d2a3d"
+      },
+      "adaptation": "The worker is compiled directly from `worker.ts` by SPKI. `connect()` exports the TypedCounter, and the HTTP UI still exercises session metadata and increment validation. Stored values persist; the exported capability itself does not.\n\nRun `npm ci --prefix examples/typescript` and `npm run typecheck --prefix examples/typescript` from the repository root for strict typechecking. SDK declarations are vendored under `types/`, and `typed-counter.d.ts` describes the checked-in schema. There is no dependency on Sandstorm source paths or a separately generated `worker.js`."
+    },
+    {
+      "upstream": "isolate-api-powerbox",
+      "path": "api-powerbox",
+      "status": "runnable",
+      "upstreamSha256": {
+        "README.md": "ba500631bd1ffc0020428e89280aecf846634053fb3f198227bbe7119323b354",
+        "worker.js": "006963516dbf101f02e969b6efa295acfe76d4b972011b1b0c534cec088e98dd"
+      },
+      "requires": "Persistent capability save/restore/revoke. Use ../../powerbox-http for the supported live-capability flow.",
+      "adaptation": "Uses the native SandstormApi save/restore/drop path and server-side KV tokens; defaults to example.com and leaves runtime system routes to Preview."
+    },
+    {
+      "upstream": "isolate-capability-provider",
+      "path": "pending/capability-provider",
+      "status": "pending",
+      "upstreamSha256": {
+        "README.md": "66723f6809e2ec348f55b2726b3d9845caae71d93d31e0e459246bdfd46b7b7d",
+        "ui.js": "00984d93d34a00c7fea7da1dc89abc5826ff14b6c65fffd2b18bc1420c28537a",
+        "worker.js": "094127eef51635a9dc51bcc1b333e738b1725821fa7511d0a46575b7cac7f0c8"
+      },
+      "requires": "Route-backed WebSession/ApiSession factories and persistent capability save/restore/revoke."
+    },
+    {
+      "upstream": "isolate-service-binding",
+      "path": "pending/service-binding",
+      "status": "pending",
+      "upstreamSha256": {
+        "README.md": "74a5599c71331b1d2916c88d156812e023a3b160d6d4485fc893cf1a3215d323",
+        "payload.bin": "b04b13d22b146e2abb83f1e1674c9a97040514c8a2f829342ddf57d8b547279d",
+        "worker.js": "902df454503a27a6c267217b78c8004ebc002a87cdf145b420af28a9301a83b2"
+      },
+      "requires": "Project declarations and runtime wiring for custom text, JSON, data, and service bindings."
+    },
+    {
+      "upstream": "isolate-streaming",
+      "path": "pending/streaming",
+      "status": "pending",
+      "upstreamSha256": {
+        "README.md": "e9a72cd2f36150706307eef8e615791709ed9575a7117c808b4337bf09dccb8e",
+        "metadata.json": "8baf55bdf6f4d8e5e699c3e4eef065a4342a163ed91c07df6ff71c092229ac6e",
+        "ui.js": "dd702c34a524edbb7800c93f6f7bdca28ba43f0d66bbbe9aca325d341d31f5de",
+        "worker.js": "b4615fde64d0aa59ee72fef687b1ba16bb69da84daf84ba39566518339f16f6a"
+      },
+      "requires": "WebSession streaming uploads and incremental responses. The current HTTP adapter buffers bounded bodies; it cannot reproduce this example\u2019s network streaming behavior."
+    }
+  ],
+  "additionalSources": {
+    "typescript/types/api.d.ts": {
+      "source": "src/sandstorm/isolate/api.d.ts",
+      "sha256": "424015c7eab78f9b22e66e6381d4ed08097c61f1a72e3f69ad8855678a467aa6"
+    },
+    "typescript/types/capnp.d.ts": {
+      "source": "src/sandstorm/isolate/capnp.d.ts",
+      "sha256": "dab9ef56ac00e35a50acbcc47c9d38215df845c23b690e5d2fef87279842c23e"
+    }
+  }
+}

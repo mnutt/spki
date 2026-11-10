@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@mnutt/capnp-es": "0.3.0",
+    "typescript": "5.9.3"
+  }
+}

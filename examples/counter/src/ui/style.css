@@ -1,0 +1,5 @@
+body { font: 18px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 4rem auto; padding: 0 1.5rem; color: #203040; }
+button { font: inherit; padding: .5rem 1rem; cursor: pointer; }
+button:disabled { cursor: wait; }
+#value { display: block; font-size: 3rem; margin: 1rem 0; }
+#status { display: block; margin-top: 1rem; }

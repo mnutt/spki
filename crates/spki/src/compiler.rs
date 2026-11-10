@@ -83,6 +83,7 @@ impl Compiler {
                 "--conditions=workerd,worker,browser",
                 "--main-fields=module,main",
                 "--charset=utf8",
+                "--loader:.txt=text",
                 "--color=false",
                 "--log-level=warning",
                 "--log-override:unsupported-dynamic-import=error",
