@@ -8,6 +8,7 @@ mod http_adapter;
 pub mod logs;
 pub mod protocol;
 mod reload;
+mod routes;
 pub mod storage;
 use anyhow::{Result, ensure};
 use futures::AsyncReadExt;

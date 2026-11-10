@@ -102,14 +102,15 @@
     },
     {
       "upstream": "isolate-capability-provider",
-      "path": "pending/capability-provider",
-      "status": "pending",
+      "path": "capability-provider",
+      "status": "runnable with legacy drop limitation",
       "upstreamSha256": {
         "README.md": "66723f6809e2ec348f55b2726b3d9845caae71d93d31e0e459246bdfd46b7b7d",
         "ui.js": "00984d93d34a00c7fea7da1dc89abc5826ff14b6c65fffd2b18bc1420c28537a",
         "worker.js": "094127eef51635a9dc51bcc1b333e738b1725821fa7511d0a46575b7cac7f0c8"
       },
-      "requires": "Route-backed WebSession/ApiSession factories and persistent capability save/restore/revoke."
+      "requires": "Route-backed WebSession/ApiSession factories and persistent capability save/restore/revoke.",
+      "adaptation": "Uses standalone route factories and MainView restoration. Reports legacy supervisor drop failure honestly; it leaves saved grants valid."
     },
     {
       "upstream": "isolate-service-binding",

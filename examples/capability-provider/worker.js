@@ -40,7 +40,16 @@ async function exerciseCapability(api, capability, options) {
   const restored = await api.restore(token);
   const restoredCall = await callJson(restored, options.restoredPath || options.path);
   const dropRestored = await restored.drop();
-  const dropSaved = await api.revoke(token);
+  let dropSaved;
+  try {
+    dropSaved = await api.revoke(token);
+  } catch (error) {
+    // Legacy supervisors cannot notify apps when a persistent reference is dropped.
+    // They fail before deleting the token. Never report that the grant was revoked.
+    if (!String(error).includes("Supervisor can only drop wakelocks for now")) throw error;
+    dropSaved = { ok: false, unsupported: true,
+      error: "This Sandstorm server cannot drop app-owned references; the saved grant remains valid." };
+  }
 
   return {
     ok: true,

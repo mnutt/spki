@@ -91,6 +91,7 @@ impl Controller {
             recovery: Cell::new(recovery),
             commit: tokio::sync::Mutex::new(()),
         });
+        *controller.host.bridge.controller.borrow_mut() = Rc::downgrade(&controller);
         if preview && !recovery {
             controller.persist(&source).await?;
         }

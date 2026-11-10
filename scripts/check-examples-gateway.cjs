@@ -96,12 +96,39 @@ function request(webkey, route) {
     cli(['--profile','viewer','auth','--webkey-stdin','--allow-local-http'],viewer,false);
 
     if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); }
-    const names=['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http'];
+    const names=['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http','capability-provider'];
     for(const name of names) {
       progress(`checking example ${name}`);
       const projectDir=path.join(directory,name);
       fs.cpSync(path.join(root,'examples',name),projectDir,{recursive:true,
         filter:p=>!p.split(path.sep).some(part=>['dist','node_modules','.spki'].includes(part))});
+      if(name==='capability-provider') {
+        const worker=path.join(projectDir,'worker.js');
+        fs.writeFileSync(worker,fs.readFileSync(worker,'utf8').replace('    try {', `    try {
+          if (url.pathname === '/test-save') {
+            const cap = await api.webSession({pathPrefix:'/shared'});
+            try { await api.storage().put('test-route-token', await cap.save({label:'Restart test'})); }
+            finally { await cap.drop(); }
+            return Response.json({ok:true});
+          }
+          if (url.pathname === '/test-restore') {
+            return api.use(await api.storage().get('test-route-token'), cap => cap.fetch('/info'));
+          }
+          if (url.pathname === '/test-revoke') {
+            const token = await api.storage().get('test-route-token');
+            await api.revoke(token);
+            try { await api.use(token, cap => cap.fetch('/info')); }
+            catch { return Response.json({rejected:true}); }
+            return Response.json({rejected:false});
+          }
+          if (url.pathname === '/test-ephemeral') {
+            const cap = await api.webSession({pathPrefix:'/shared',persistent:false});
+            try { await cap.save(); return Response.json({rejected:false}); }
+            catch { return Response.json({rejected:true}); }
+            finally { await cap.drop(); }
+          }
+        `));
+      }
       cli(['--project',projectDir,'auth','--webkey-stdin','--allow-local-http'],developer);
       cli(['--project',projectDir,'dev','--once']);
       await frame.goto(new URL('/',frame.url()).href);
@@ -112,7 +139,44 @@ function request(webkey, route) {
           return response.json();
         },{route,post});
       }
-      if(name==='hello') {
+      if(name==='capability-provider') {
+        for(const kind of ['web-session','api-session']) {
+          const result=await json('/api/export-'+kind,true);
+          assert(result.ok && result.saved);
+          assert.equal(result.directCall.status,200);
+          assert.equal(result.restoredCall.status,200);
+          assert.equal(result.directCall.body.path,kind==='web-session'?'/shared/info':'/api/v1/status');
+          assert.equal(result.restoredCall.body.search,'?source=restored');
+          assert(result.dropSaved.ok || result.dropSaved.unsupported);
+          if(kind==='web-session') {
+            assert.equal(result.directCall.body.forwardedHeader,'from-claimed-fetch');
+            assert(!result.directCall.body.session.sessionId);
+          } else assert.equal(result.directCall.body.sessionType,'api');
+        }
+        assert((await json('/test-ephemeral')).rejected);
+        assert((await json('/test-save')).ok);
+        await call('shutdownGrain',grainId);
+        let ready=false;
+        for(let attempt=0;attempt<40;attempt++) {
+          try { ready=(await request(developer,'/__spki/v1/info')).status===200; } catch {}
+          if(ready) break;
+          await page.waitForTimeout(250);
+        }
+        assert(ready,'Preview did not recover');
+        await page.reload(); frame=await appFrame();
+        assert.equal((await json('/test-restore')).path,'/shared/info');
+        const worker=path.join(projectDir,'worker.js');
+        fs.writeFileSync(worker,fs.readFileSync(worker,'utf8').replace('provider-web-session','provider-web-session-v2'));
+        cli(['--project',projectDir,'dev','--once']);
+        assert.equal(await frame.evaluate(()=>fetch('/test-restore').then(r=>r.headers.get('etag'))),'"provider-web-session-v2"');
+        const drop=await frame.evaluate(async()=>{const r=await fetch('/test-revoke');return {status:r.status,body:await r.json()};});
+        if(drop.status===500) {
+          assert(drop.body.message.includes('Supervisor can only drop wakelocks for now'));
+          assert.equal((await json('/test-restore')).path,'/shared/info');
+          console.log('CONFIRMED: legacy supervisor drop limitation; failed drop leaves token usable');
+        } else assert(drop.body.rejected);
+        console.log('PASS: route grant survives restart/replacement; ephemeral save is rejected');
+      } else if(name==='hello') {
         const data=await json('/hello?test=1');
         assert.equal(data.pathname,'/hello');assert(data.hasStorageBinding && data.hasNativeRpcBinding);
       } else if(name==='storage-counter') {

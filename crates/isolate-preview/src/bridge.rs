@@ -11,6 +11,7 @@ use std::{
 };
 
 pub struct State {
+    pub controller: RefCell<Weak<crate::controller::Controller>>,
     pub api: RefCell<Option<sandstorm_api::Client<capnp::any_pointer::Owned>>>,
     sessions: RefCell<HashMap<String, Weak<Session>>>,
 }
@@ -45,6 +46,7 @@ pub fn random_id() -> capnp::Result<String> {
 impl State {
     pub fn new() -> Rc<Self> {
         Rc::new(Self {
+            controller: Default::default(),
             api: RefCell::new(None),
             sessions: Default::default(),
         })
@@ -106,6 +108,23 @@ impl Worker {
     }
 }
 impl isolate_bridge::Server for Worker {
+    async fn create_route_backed_capability(
+        self: Rc<Self>,
+        params: isolate_bridge::CreateRouteBackedCapabilityParams,
+        mut results: isolate_bridge::CreateRouteBackedCapabilityResults,
+    ) -> capnp::Result<()> {
+        self.live()?;
+        let p = params.get()?;
+        let cap = crate::routes::create(
+            self.state.controller.borrow().clone(),
+            p.get_native_interface()?.to_str()?,
+            p.get_path_prefix()?.to_str()?,
+            p.get_persistent(),
+        )?;
+        results.get().get_cap().set_as_capability(cap.hook);
+        Ok(())
+    }
+
     async fn get_sandstorm_api(
         self: Rc<Self>,
         _: isolate_bridge::GetSandstormApiParams,

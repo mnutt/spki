@@ -24,7 +24,32 @@ pub struct View {
     pub mode: RuntimeMode,
     pub title: String,
 }
-impl main_view::Server<capnp::any_pointer::Owned> for View {}
+impl main_view::Server<capnp::any_pointer::Owned> for View {
+    async fn restore(
+        self: Rc<Self>,
+        params: main_view::RestoreParams<capnp::any_pointer::Owned>,
+        mut results: main_view::RestoreResults<capnp::any_pointer::Owned>,
+    ) -> capnp::Result<()> {
+        let cap = crate::routes::restore(
+            Rc::downgrade(&self.controller),
+            params.get()?.get_object_id()?,
+        )?;
+        results.get().get_cap().set_as_capability(cap.hook);
+        Ok(())
+    }
+    async fn drop(
+        self: Rc<Self>,
+        params: main_view::DropParams<capnp::any_pointer::Owned>,
+        _: main_view::DropResults<capnp::any_pointer::Owned>,
+    ) -> capnp::Result<()> {
+        // Route IDs are self-contained and own no disk resources. Sandstorm manages references.
+        crate::routes::restore(
+            Rc::downgrade(&self.controller),
+            params.get()?.get_object_id()?,
+        )?;
+        Ok(())
+    }
+}
 impl ui_view::Server for View {
     async fn get_view_info(
         self: Rc<Self>,

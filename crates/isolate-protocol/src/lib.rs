@@ -57,3 +57,7 @@ pub mod outbound_http_session_capnp {
         "/sandstorm/outbound_http_session_capnp.rs"
     ));
 }
+
+pub mod route_session_capnp {
+    include!(concat!(env!("OUT_DIR"), "/route_session_capnp.rs"));
+}

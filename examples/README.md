@@ -18,6 +18,7 @@ build or run them. Upstream signing keys and generated worker bundles are omitte
 | [typescript](typescript/) | Strict TypeScript types and a typed persistent counter |
 | [powerbox-http](powerbox-http/) | Real Powerbox HTTP grants passed from the browser to the worker |
 | [api-powerbox](api-powerbox/) | Save imported HTTP grants, restore after restart, and drop saved references |
+| [capability-provider](capability-provider/) | Durable route-backed WebSession/ApiSession; legacy servers cannot drop saved app references |
 
 ## Run an example
 
@@ -62,7 +63,6 @@ configuration. These need runtime work before they can be ported faithfully:
 
 | Example | Missing support |
 | --- | --- |
-| [capability-provider](pending/capability-provider/) | Route-backed capability factories and capability persistence |
 | [service-binding](pending/service-binding/) | Custom text, JSON, data, and service binding declarations |
 | [streaming](pending/streaming/) | Streaming WebSession uploads and incremental HTTP responses |
 

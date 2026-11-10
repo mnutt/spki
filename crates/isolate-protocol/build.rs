@@ -11,6 +11,7 @@ fn main() {
         "sandstorm/isolate-bridge.capnp",
         "sandstorm/outbound-http-session.capnp",
         "supervisor-probe.capnp",
+        "route-session.capnp",
         "sandstorm/grain.capnp",
         "sandstorm/web-session.capnp",
         "sandstorm/util.capnp",
