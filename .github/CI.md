@@ -40,8 +40,11 @@ both of the following are configured in repository Actions settings:
 As in Davros, release signing is separate. `v*` tags require the secret
 `SANDSTORM_KEYRING_B64`, containing the base64-encoded keyring for the app ID in
 `.sandstorm/sandstorm-pkgdef.capnp`. Missing release keys fail the build. Bump
-`appVersion` and `appMarketingVersion` in that file before tagging a release;
-the workflow preserves them. Never commit keyrings. Fork PRs need no secrets.
+`appVersion` in that file before tagging a release. Set `appMarketingVersion`
+and `[workspace.package].version` in `Cargo.toml` to the same version (currently
+`0.1.3-dev`), and refresh `Cargo.lock`. Packaging rejects mismatches. Test and
+release SPKs display the same version as `spki --version`; CI uses the commit
+hash in artifact filenames, not as the displayed version. Never commit keyrings. Fork PRs need no secrets.
 
 The schema compiler is linked into both the CLI and Cargo build scripts; normal
 builds do not invoke a system `capnp`. Maintainers can compare compiled schema
@@ -65,8 +68,8 @@ cargo run --locked --release -p spki --example package-preview -- \
   --test --output build/isolate-preview-test.spk
 ```
 
-The helper shares `spki`'s SPK writer and verifier. It uses `capnp` to read the
-existing `.sandstorm/sandstorm-pkgdef.capnp`, copies the staged runtime into a
+The helper shares `spki`'s SPK writer and verifier. It uses the embedded schema compiler to read the
+existing `.sandstorm/sandstorm-pkgdef.capnp`, copies the verified runtime inventory into a
 temporary directory, writes the manifest, then signs, compresses, and verifies
 the package in Rust. It does not upload or install it. Test builds get a fresh
 identity unless `--keyring` and `--app-id` select an existing test identity.

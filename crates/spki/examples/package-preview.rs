@@ -20,8 +20,6 @@ struct Args {
     #[arg(long, requires = "keyring", requires = "test")]
     app_id: Option<String>,
     #[arg(long, requires = "test")]
-    version: Option<String>,
-    #[arg(long, requires = "test")]
     app_version: Option<u32>,
 }
 
@@ -45,6 +43,12 @@ fn main() -> Result<()> {
         &root.join("crates/spki/schema"),
     )?;
     let package = definition.package()?;
+    ensure!(
+        package["manifest"]["appMarketingVersion"]["defaultText"].as_str()
+            == Some(env!("CARGO_PKG_VERSION")),
+        "preview appMarketingVersion must match the Cargo workspace version ({})",
+        env!("CARGO_PKG_VERSION")
+    );
     let manifest_bytes = definition.manifest()?;
     let temporary = tempfile::tempdir()?;
     let signing = if args.test {
@@ -65,7 +69,10 @@ fn main() -> Result<()> {
             spk::identity(&keyring, &id)?
         }
     } else {
-        spk::identity(&spk::keyring(args.keyring)?, package["id"].as_str().context("package ID missing")?)?
+        spk::identity(
+            &spk::keyring(args.keyring)?,
+            package["id"].as_str().context("package ID missing")?,
+        )?
     };
     let mut manifest = Builder::new_default();
     let input = serialize::read_message(manifest_bytes.as_slice(), Default::default())?;
@@ -76,19 +83,16 @@ fn main() -> Result<()> {
             .reborrow()
             .init_app_title()
             .set_default_text("Isolate Preview (test)");
-        if let Some(version) = args.version {
-            value
-                .reborrow()
-                .init_app_marketing_version()
-                .set_default_text(&version);
-        }
         if let Some(version) = args.app_version {
             value.set_app_version(version);
         }
     }
     let stage = temporary.path().join("stage");
     spki::runtime::stage(&args.runtime_root, &stage)?;
-    fs::write(stage.join("app/worker.js"), include_bytes!("../../../preview/fixtures/sdk-counter.js"))?;
+    fs::write(
+        stage.join("app/worker.js"),
+        include_bytes!("../../../preview/fixtures/sdk-counter.js"),
+    )?;
     fs::write(
         stage.join("sandstorm-manifest"),
         serialize::write_message_to_words(&manifest),

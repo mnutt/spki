@@ -66,7 +66,7 @@ jobs:
             if [[ -f .sandstorm/sandstorm-test-app-id ]]; then
               signing_args=(--keyring "$HOME/.sandstorm/sandstorm-keyring" --app-id "$(cat .sandstorm/sandstorm-test-app-id)")
             fi
-            cargo run --locked --release -p spki --example package-preview -- --test --version "$GITHUB_SHA" --app-version "$GITHUB_RUN_NUMBER" "${signing_args[@]}" --output "build/isolate-preview-test-${GITHUB_SHA}.spk"
+            cargo run --locked --release -p spki --example package-preview -- --test --app-version "$GITHUB_RUN_NUMBER" "${signing_args[@]}" --output "build/isolate-preview-test-${GITHUB_SHA}.spk"
           fi
       - uses: actions/upload-artifact@v4
         with:
