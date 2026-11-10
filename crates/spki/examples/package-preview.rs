@@ -1,10 +1,5 @@
 //! Native previewer packaging, sharing the CLI's SPK writer and verifier.
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-#[path = "../src/ids.rs"]
-mod ids;
-#[allow(dead_code)]
-#[path = "../src/spk.rs"]
-mod spk;
+use spki::{package_capnp, spk};
 
 use anyhow::{Context, Result, ensure};
 use capnp::{message::Builder, serialize};
@@ -28,25 +23,6 @@ struct Args {
     version: Option<String>,
     #[arg(long, requires = "test")]
     app_version: Option<u32>,
-}
-
-fn copy_tree(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
-    fs::create_dir_all(destination)?;
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let kind = entry.file_type()?;
-        let target = destination.join(entry.file_name());
-        if kind.is_dir() {
-            copy_tree(&entry.path(), &target)?;
-        } else {
-            ensure!(
-                kind.is_file(),
-                "runtime staging must contain only regular files and directories"
-            );
-            fs::copy(entry.path(), target)?;
-        }
-    }
-    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -118,7 +94,8 @@ fn main() -> Result<()> {
         }
     }
     let stage = temporary.path().join("stage");
-    copy_tree(&args.runtime_root, &stage)?;
+    spki::runtime::stage(&args.runtime_root, &stage)?;
+    fs::write(stage.join("app/worker.js"), include_bytes!("../../../preview/fixtures/sdk-counter.js"))?;
     fs::write(
         stage.join("sandstorm-manifest"),
         serialize::write_message_to_words(&manifest),

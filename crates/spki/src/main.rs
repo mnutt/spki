@@ -1,6 +1,5 @@
 #![forbid(unsafe_code)]
-mod capnp_compiler;
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+use spki::*;
 mod api;
 mod compiler;
 mod credentials;
@@ -11,10 +10,8 @@ mod schema_engine;
 mod schemas;
 use api::{Api, revision};
 use credentials::{load, parse_webkey, save, store_path};
-mod ids;
 mod pack;
 mod project;
-mod spk;
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand};
 use std::{
