@@ -44,6 +44,18 @@ jobs:
         run: cargo test --locked --workspace
       - name: Build CLI
         run: cargo build --locked --release -p spki --bin spki
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Host regression checks
+        env:
+          SPKI_TEST_BINARY: ${{ github.workspace }}/target/release/spki
+        run: python3 scripts/check-host.py
+      - name: Compare embedded and official schema compilers
+        run: cargo test --locked -p spki --lib -- --ignored
       - name: Package CLI
         env:
           TARGET: ${{ matrix.target }}

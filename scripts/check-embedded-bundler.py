@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parent.parent
-cli = root / 'target/debug/spki'
+cli = Path(os.environ.get('SPKI_TEST_BINARY', str(root/'target/debug/spki'))).resolve()
 
 def run(*args, **kwargs):
     return subprocess.run([str(a) for a in args], check=True, capture_output=True, text=True, **kwargs)

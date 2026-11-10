@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parent.parent
-cli = root/'target/debug/spki'
+cli = Path(os.environ.get('SPKI_TEST_BINARY', str(root/'target/debug/spki'))).resolve()
 env = dict(os.environ)
 with tempfile.TemporaryDirectory() as temp:
     project = Path(temp)

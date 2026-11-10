@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 root=Path(__file__).resolve().parent.parent
-cli=root/'target/debug/spki'
+cli=Path(os.environ.get('SPKI_TEST_BINARY', str(root/'target/debug/spki'))).resolve()
 with tempfile.TemporaryDirectory() as temp:
     base=Path(temp)
     env=dict(os.environ,XDG_CONFIG_HOME=str(base/'credentials'))

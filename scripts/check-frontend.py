@@ -2,11 +2,12 @@
 """Frontend artifact reproducibility, revision changes, admission and deleted assets."""
 import os, pathlib, shutil, subprocess, tempfile
 root = pathlib.Path(__file__).resolve().parent.parent
+cli = pathlib.Path(os.environ.get('SPKI_TEST_BINARY', str(root/'target/debug/spki'))).resolve()
 with tempfile.TemporaryDirectory() as temp:
     project = pathlib.Path(temp)/'project'
     env = dict(os.environ)
     def run(*args, ok=True):
-        result = subprocess.run([str(root/'target/debug/spki'), *args], env=env, capture_output=True, text=True)
+        result = subprocess.run([str(cli), *args], env=env, capture_output=True, text=True)
         assert (result.returncode == 0) == ok, result.stderr
         return result
     run('init',str(project))
