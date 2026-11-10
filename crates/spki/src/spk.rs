@@ -1,6 +1,9 @@
 //! Native SPK framing and signing, adapted from sandstorm-marketplace's package.rs/spk.rs.
 //! See licenses/Marketplace-LICENSE. Marketplace policy/PGP certification is not implemented here.
-use crate::{ids, package_capnp as p};
+use crate::{
+    archive::{self, LIMIT, valid_name},
+    ids, package_capnp as p,
+};
 use anyhow::{Context, Result, bail, ensure};
 use capnp::{
     message::{Builder, ReaderOptions},
@@ -10,13 +13,12 @@ use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use sha2::{Digest, Sha512};
 use std::{
     collections::HashSet,
-    fs::{self, File, OpenOptions},
+    fs::{File, OpenOptions},
     io::{BufReader, Read, Seek, Write},
     os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
 };
 pub const MAGIC: &[u8; 8] = b"\x8f\xc6\xcd\xef\x45\x1a\xea\x96";
-const LIMIT: u64 = 1 << 30;
 pub fn limits(words: usize) -> ReaderOptions {
     ReaderOptions {
         traversal_limit_in_words: Some(words),
@@ -98,79 +100,47 @@ pub fn identity(path: &Path, id: &str) -> Result<SigningKey> {
     }
     found.context("app ID not found in keyring; restore/import the existing key, or explicitly generate a new identity with spki keygen")
 }
-fn files(
-    path: &Path,
-    mut list: capnp::struct_list::Builder<'_, p::archive::file::Owned>,
-    size: &mut u64,
-) -> Result<()> {
-    let mut entries = fs::read_dir(path)?.collect::<std::io::Result<Vec<_>>>()?;
-    entries.sort_by_key(|e| e.file_name());
-    for (index, entry) in entries.iter().enumerate() {
-        let name = entry.file_name();
-        let name = name.to_str().context("non-UTF8 filename")?;
-        valid_name(name)?;
-        let mut file = list.reborrow().get(index as u32);
-        file.set_name(name);
-        // Fixed timestamps and sorted paths make identical staging trees deterministic.
-        file.set_last_modification_time_ns(0);
-        let kind = entry.file_type()?;
-        if kind.is_dir() {
-            let count = fs::read_dir(entry.path())?.count();
-            files(&entry.path(), file.init_directory(count.try_into()?), size)?;
-        } else {
-            ensure!(
-                kind.is_file(),
-                "special files and symlinks are not accepted in package staging"
-            );
-            let metadata = entry.metadata()?;
-            *size += metadata.len();
-            ensure!(*size <= LIMIT, "archive too large");
-            let data = fs::read(entry.path())?;
-            if metadata.permissions().mode() & 0o111 != 0 {
-                file.set_executable(&data);
-            } else {
-                file.set_regular(&data);
-            }
-        }
+struct HashWriter(Sha512);
+impl Write for HashWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
     }
-    Ok(())
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 pub fn write(stage: &Path, signing: &SigningKey, output: &Path) -> Result<()> {
-    let mut archive = Builder::new_default();
-    files(
-        stage,
-        archive
-            .init_root::<p::archive::Builder>()
-            .init_files(fs::read_dir(stage)?.count().try_into()?),
-        &mut 0,
-    )?;
-    let bytes = serialize::write_message_to_words(&archive);
-    ensure!(bytes.len() as u64 <= LIMIT, "archive too large");
-    let hash = Sha512::digest(&bytes);
+    let parent = output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut archive = archive::spool(stage, parent)?;
+    let mut digest = HashWriter(Sha512::new());
+    archive::copy(&mut archive, &mut digest)?;
+    archive.rewind()?;
+    let hash = digest.0.finalize();
     let mut signed = signing.sign(&hash).to_bytes().to_vec();
     signed.extend_from_slice(&hash);
     let mut signature = Builder::new_default();
     let mut value = signature.init_root::<p::signature::Builder>();
     value.set_public_key(signing.verifying_key().as_bytes());
     value.set_signature(&signed);
-    let parent = output
-        .parent()
-        .filter(|p| !p.as_os_str().is_empty())
-        .unwrap_or(Path::new("."));
     let mut file = tempfile::NamedTempFile::new_in(parent)?;
     file.write_all(MAGIC)?;
     {
-        let mut options = lzma_rust2::XzOptions::default();
-        options.set_block_size(std::num::NonZeroU64::new(
-            u64::from(options.lzma_options.dict_size) * 3,
-        ));
-        let mut encoder = lzma_rust2::XzWriterMt::new(file.as_file_mut(), options, 2)?;
+        // One encoder with a fixed dictionary bounds compression memory independently
+        // of archive size. Parallel encoders also retain multiple whole input blocks.
+        let mut encoder =
+            lzma_rust2::XzWriter::new(file.as_file_mut(), lzma_rust2::XzOptions::with_preset(3))?;
         serialize::write_message(&mut encoder, &signature)?;
-        encoder.write_all(&bytes)?;
+        archive::copy(&mut archive, &mut encoder)?;
         encoder.finish()?;
     }
+    // Verification uses a separate authenticated spool; release this one first.
+    drop(archive);
     file.as_file().sync_all()?;
-    let verified = verify(file.path())?;
+    let verified = verify_in(file.path(), parent)?;
     ensure!(
         verified["appId"] == ids::app_id(signing.verifying_key().as_bytes()),
         "package identity verification failed"
@@ -178,13 +148,6 @@ pub fn write(stage: &Path, signing: &SigningKey, output: &Path) -> Result<()> {
     // A pack operation never overwrites an existing release artifact.
     file.persist_noclobber(output)?;
     File::open(parent)?.sync_all()?;
-    Ok(())
-}
-fn valid_name(name: &str) -> Result<()> {
-    ensure!(
-        !name.is_empty() && name != "." && name != ".." && !name.contains(['/', '\\', '\0']),
-        "invalid archive path component"
-    );
     Ok(())
 }
 fn validate_files(
@@ -197,7 +160,9 @@ fn validate_files(
     for file in files {
         *count += 1;
         ensure!(*count <= 100_000, "archive has too many files");
-        let name = file.get_name()?.to_str()?;
+        let name = file.get_name()?;
+        ensure!(name.len() <= 255, "archive filename too long");
+        let name = name.to_str()?;
         valid_name(name)?;
         ensure!(names.insert(name), "duplicate archive filename");
         match file.which()? {
@@ -206,8 +171,13 @@ fn validate_files(
                 let _ = data?;
             }
             p::archive::file::Symlink(target) => {
-                let target = target?.to_str()?;
-                ensure!(!target.contains('\0'), "invalid symlink target");
+                let target = target?;
+                ensure!(target.len() <= 4096, "symlink target too long");
+                let target = target.to_str()?;
+                ensure!(
+                    target.len() <= 4096 && !target.contains('\0'),
+                    "invalid symlink target"
+                );
                 let mut level = if target.starts_with('/') { 0 } else { depth };
                 for part in target.split('/') {
                     match part {
@@ -224,40 +194,10 @@ fn validate_files(
     }
     Ok(())
 }
-fn read_archive(
-    input: &mut impl Read,
-    size: u64,
-) -> Result<capnp::message::Reader<serialize::OwnedSegments>> {
-    let mut word = [0; 4];
-    input.read_exact(&mut word)?;
-    let count = u64::from(u32::from_le_bytes(word)) + 1;
-    ensure!(count <= 65536, "too many archive segments");
-    let table = (count + 2) / 2 * 8;
-    ensure!(table <= size, "truncated archive framing");
-    let mut lengths = serialize::SegmentLengthsBuilder::with_capacity(count as usize);
-    for _ in 0..count {
-        input.read_exact(&mut word)?;
-        lengths.try_push_segment(u32::from_le_bytes(word) as usize)?;
-        ensure!(
-            lengths.total_words() as u64 <= (size - table) / 8,
-            "invalid archive segment lengths"
-        );
-    }
-    if count % 2 == 0 {
-        input.read_exact(&mut word)?;
-    }
-    ensure!(
-        lengths.total_words() as u64 * 8 == size - table,
-        "trailing or truncated archive data"
-    );
-    let mut segments = lengths.into_owned_segments();
-    input.read_exact(&mut segments)?;
-    Ok(capnp::message::Reader::new(
-        segments,
-        limits(LIMIT as usize / 8),
-    ))
-}
 pub fn verify(path: &Path) -> Result<serde_json::Value> {
+    verify_in(path, &std::env::temp_dir())
+}
+fn verify_in(path: &Path, temporary: &Path) -> Result<serde_json::Value> {
     let mut file = File::open(path)?;
     ensure!(file.metadata()?.len() <= LIMIT, "SPK exceeds 1 GiB limit");
     let mut magic = [0; 8];
@@ -274,7 +214,7 @@ pub fn verify(path: &Path) -> Result<serde_json::Value> {
     ensure!(signed.len() == 128, "invalid signature length");
     VerifyingKey::from_bytes(&public)?
         .verify_strict(&signed[64..], &Signature::from_slice(&signed[..64])?)?;
-    let mut archive = tempfile::tempfile()?;
+    let mut archive = tempfile::tempfile_in(temporary)?;
     let mut hash = Sha512::new();
     let mut size = 0;
     let mut buffer = [0; 65536];
@@ -292,8 +232,11 @@ pub fn verify(path: &Path) -> Result<serde_json::Value> {
         hash.finalize().as_slice() == &signed[64..],
         "archive hash does not match signature"
     );
-    archive.rewind()?;
-    let message = read_archive(&mut archive, size)?;
+    drop(decoder);
+    let mapping = archive::freeze(archive)?;
+    let mut bytes = mapping.as_ref();
+    let message = serialize::read_message_from_flat_slice(&mut bytes, limits(LIMIT as usize / 8))?;
+    ensure!(bytes.is_empty(), "trailing archive data");
     let files = message.get_root::<p::archive::Reader>()?.get_files()?;
     validate_files(files, 0, &mut 0)?;
     for file in files {
@@ -323,6 +266,7 @@ pub fn verify(path: &Path) -> Result<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
     #[test]
     fn keyrings_select_by_identity_and_reject_damage() -> Result<()> {
         let temp = tempfile::tempdir()?;

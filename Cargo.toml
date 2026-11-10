@@ -23,3 +23,7 @@ strip = "symbols"
 # Compression is prohibitively slow without optimization, even in a debug CLI build.
 [profile.dev.package.lzma-rust2]
 opt-level = 3
+
+# Package hashing streams hundreds of MiB, including in developer memory regressions.
+[profile.dev.package.sha2]
+opt-level = 3

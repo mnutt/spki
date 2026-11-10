@@ -5,6 +5,9 @@ import subprocess
 import sys
 
 root = Path(__file__).resolve().parent.parent
-for name in ['stage', 'project', 'compiler', 'embedded-bundler', 'frontend', 'examples']:
+names = ['stage', 'project', 'compiler', 'embedded-bundler', 'frontend', 'examples']
+if '--embedded-runtime' in sys.argv:
+    names.append('embedded-runtime')
+for name in names:
     print(f'Checking {name}…', flush=True)
     subprocess.run([sys.executable, str(root / f'scripts/check-{name}.py')], cwd=root, check=True)

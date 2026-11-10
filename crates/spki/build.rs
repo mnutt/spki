@@ -1,5 +1,22 @@
 use std::{env, fs, path::Path};
 fn main() {
+    println!("cargo:rerun-if-env-changed=SPKI_RUNTIME_BUNDLE");
+    let embedded = if let Some(path) = env::var_os("SPKI_RUNTIME_BUNDLE") {
+        let path = fs::canonicalize(path)
+            .expect("SPKI_RUNTIME_BUNDLE must name an existing runtime bundle");
+        println!("cargo:rerun-if-changed={}", path.display());
+        format!(
+            "static EMBEDDED_RUNTIME: &[u8] = include_bytes!({:?});\n",
+            path.to_str().expect("runtime path must be UTF-8")
+        )
+    } else {
+        "static EMBEDDED_RUNTIME: &[u8] = &[];\n".into()
+    };
+    fs::write(
+        Path::new(&env::var("OUT_DIR").unwrap()).join("embedded-runtime.rs"),
+        embedded,
+    )
+    .unwrap();
     println!("cargo:rerun-if-changed=schema");
     fn walk(dir: &Path, files: &mut Vec<String>) {
         for entry in fs::read_dir(dir).unwrap() {

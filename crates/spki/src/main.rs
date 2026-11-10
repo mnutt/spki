@@ -47,9 +47,9 @@ enum Command {
     Pack {
         #[arg(long)]
         output: PathBuf,
-        /// Prepared Linux runtime bundle from scripts/stage-preview.py.
+        /// Override the embedded runtime with a prepared development runtime directory.
         #[arg(long)]
-        runtime_root: PathBuf,
+        runtime_root: Option<PathBuf>,
         #[arg(long)]
         keyring: Option<PathBuf>,
         #[arg(long)]

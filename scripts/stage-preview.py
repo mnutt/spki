@@ -10,8 +10,11 @@ root = Path(generation.name) / "root"
 root.mkdir()
 files = {}
 pin = json.loads(Path('runtime/isolate-host.json').read_text())
+def digest(path):
+    with Path(path).open('rb') as file:
+        return hashlib.file_digest(file, 'sha256').hexdigest()
 host = Path('build/host/bin/isolate-host')
-assert hashlib.sha256(host.read_bytes()).hexdigest() == pin['binarySha256']
+assert digest(host) == pin['binarySha256']
 for directory in ['dev', 'tmp', 'var', 'proc']:
     (root / directory).mkdir(parents=True, exist_ok=True)
 def copy(source, dest):
@@ -20,8 +23,8 @@ def copy(source, dest):
     shutil.copy2(source, dest)
     name = str(dest.relative_to(root))
     if name != 'app/worker.js':
-        files[name] = {'sha256': hashlib.sha256(dest.read_bytes()).hexdigest(), 'mode': dest.stat().st_mode & 0o777}
-for binary, name in [(Path('target/debug/isolate-preview'), 'bin/isolate-preview'), (host, 'bin/isolate-host')]:
+        files[name] = {'sha256': digest(dest), 'mode': dest.stat().st_mode & 0o777}
+for binary, name in [(Path(os.environ.get('SPKI_PREVIEW_BINARY', 'target/debug/isolate-preview')), 'bin/isolate-preview'), (host, 'bin/isolate-host')]:
     copy(binary, name)
     for line in subprocess.check_output(['ldd', str(binary)], text=True).splitlines():
         words = line.split()

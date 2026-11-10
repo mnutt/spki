@@ -1,7 +1,8 @@
 //! Shared package writing, runtime staging, and schema evaluation for CLI tools.
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
+mod archive;
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 pub mod capnp_compiler;
 pub mod ids;
-pub mod spk;
 pub mod runtime;
+pub mod spk;

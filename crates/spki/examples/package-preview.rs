@@ -10,8 +10,8 @@ use std::{fs, path::PathBuf};
 struct Args {
     #[arg(long)]
     output: PathBuf,
-    #[arg(long, default_value = "build/grain-root")]
-    runtime_root: PathBuf,
+    #[arg(long)]
+    runtime_root: Option<PathBuf>,
     #[arg(long)]
     test: bool,
     #[arg(long)]
@@ -26,14 +26,6 @@ struct Args {
 fn main() -> Result<()> {
     let args = Args::parse();
     ensure!(!args.output.exists(), "output already exists");
-    ensure!(
-        args.runtime_root.join("bin/isolate-preview").is_file(),
-        "stage the previewer first"
-    );
-    ensure!(
-        args.runtime_root.join("bin/isolate-host").is_file(),
-        "stage the isolate host first"
-    );
     // Parse the existing package definition so manifest versions and commands
     // remain shared with local development. This uses the schema compiler only,
     // not the spk command or a running server.
@@ -50,7 +42,13 @@ fn main() -> Result<()> {
         env!("CARGO_PKG_VERSION")
     );
     let manifest_bytes = definition.manifest()?;
-    let temporary = tempfile::tempdir()?;
+    let parent = args
+        .output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    fs::create_dir_all(parent)?;
+    let temporary = tempfile::tempdir_in(parent)?;
     let signing = if args.test {
         if let Some(id) = &args.app_id {
             spk::identity(
@@ -88,7 +86,10 @@ fn main() -> Result<()> {
         }
     }
     let stage = temporary.path().join("stage");
-    spki::runtime::stage(&args.runtime_root, &stage)?;
+    match args.runtime_root {
+        Some(root) => spki::runtime::stage(&root, &stage)?,
+        None => spki::runtime::stage_embedded(&stage)?,
+    }
     fs::write(
         stage.join("app/worker.js"),
         include_bytes!("../../../preview/fixtures/sdk-counter.js"),

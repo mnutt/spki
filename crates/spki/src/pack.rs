@@ -21,7 +21,7 @@ fn command(mut command: p::manifest::command::Builder<'_>) {
 }
 pub struct Options {
     pub output: PathBuf,
-    pub runtime_root: PathBuf,
+    pub runtime_root: Option<PathBuf>,
     pub keyring: PathBuf,
     pub app_id: Option<String>,
     pub target: String,
@@ -89,8 +89,16 @@ pub fn pack(file: &Path, options: Options) -> Result<()> {
         );
         command(m.init_continue_command());
     }
-    let stage = tempfile::tempdir()?;
-    spki::runtime::stage(&options.runtime_root, stage.path())?;
+    let parent = options
+        .output
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let stage = tempfile::tempdir_in(parent)?;
+    match options.runtime_root {
+        Some(root) => spki::runtime::stage(&root, stage.path())?,
+        None => spki::runtime::stage_embedded(stage.path())?,
+    }
     fs::write(stage.path().join("app/worker.js"), code.as_bytes())?;
     fs::write(
         stage.path().join("app/config.json"),
