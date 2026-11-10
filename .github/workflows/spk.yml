@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y capnproto libcapnp-dev qemu-system-x86
+        run: sudo apt-get update && sudo apt-get install -y capnproto libcapnp-dev
       - name: Set up Rust
         run: rustup toolchain install 1.98.0 --profile minimal && rustup default 1.98.0
       - uses: Swatinem/rust-cache@v2
@@ -31,27 +31,10 @@ jobs:
           mkdir -p target/debug
           cp target/release/isolate-preview target/debug/isolate-preview
           python3 scripts/stage-preview.py
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.24.4'
-          cache: false
-      - name: Install spktool
-        run: |
-          go install github.com/mnutt/spktool/cmd/spktool@66c09e8f5c3cc53948a17c0c4cee99c8ccc094ef
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - uses: lima-vm/lima-actions/setup@v1
-        id: lima
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/lima
-          key: lima-${{ steps.lima.outputs.version }}
-      - name: Prepare Sandstorm host directories
-        # vm create assumes setupvm already initialized this mounted directory.
-        # Run for PRs too, even when no signing secret is available.
+      - name: Prepare signing directory
         run: |
           umask 077
-          mkdir -p "$HOME/.sandstorm/caches"
-          touch "$HOME/.sandstorm/sandstorm-keyring"
+          mkdir -p "$HOME/.sandstorm"
       - name: Restore signing identity
         # PR builds always use a disposable identity, without repository secrets.
         if: github.event_name != 'pull_request'
@@ -73,15 +56,17 @@ jobs:
             printf '%s' "$TEST_KEYRING" | base64 --decode > "$HOME/.sandstorm/sandstorm-keyring"
             printf '%s\n' "$TEST_APP_ID" > .sandstorm/sandstorm-test-app-id
           fi
-      - name: Provision packaging VM
-        run: spktool vm create --provider lima
-      - name: Build SPK
+      - name: Build and verify SPK
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            spktool pack --provider lima "build/isolate-preview-${GITHUB_REF_NAME}.spk"
+            cargo run --locked --release -p spki --example package-preview -- --keyring "$HOME/.sandstorm/sandstorm-keyring" --output "build/isolate-preview-${GITHUB_REF_NAME}.spk"
           else
-            spktool pack --provider lima --dev --set-version "$GITHUB_SHA" "build/isolate-preview-test-${GITHUB_SHA}.spk"
+            signing_args=()
+            if [[ -f .sandstorm/sandstorm-test-app-id ]]; then
+              signing_args=(--keyring "$HOME/.sandstorm/sandstorm-keyring" --app-id "$(cat .sandstorm/sandstorm-test-app-id)")
+            fi
+            cargo run --locked --release -p spki --example package-preview -- --test --version "$GITHUB_SHA" --app-version "$GITHUB_RUN_NUMBER" "${signing_args[@]}" --output "build/isolate-preview-test-${GITHUB_SHA}.spk"
           fi
       - uses: actions/upload-artifact@v4
         with:

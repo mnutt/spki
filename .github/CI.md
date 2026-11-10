@@ -3,7 +3,7 @@
 Pushes to `main`, pull requests, `v*` tags, and manual workflow runs build:
 
 - `spki` archives and SHA-256 checksums for Linux x86_64/ARM64 and macOS Intel/Apple Silicon.
-- A Linux x86_64 Isolate Preview SPK, built in release mode and packaged with spktool in Lima.
+- A Linux x86_64 Isolate Preview SPK, built in release mode and packaged and verified by the native Rust SPK writer. No `spk` command, VM, or running Sandstorm server is needed.
 
 Download artifacts from the workflow run's Actions page. These workflows do not
 install packages on Sandstorm or publish GitHub Releases.
@@ -30,3 +30,23 @@ As in Davros, release signing is separate. `v*` tags require the secret
 `.sandstorm/sandstorm-pkgdef.capnp`. Missing release keys fail the build. Bump
 `appVersion` and `appMarketingVersion` in that file before tagging a release;
 the workflow preserves them. Never commit keyrings. Fork PRs need no secrets.
+
+## Native previewer packaging
+
+After staging `build/grain-root`, create a disposable test package with:
+
+```sh
+cargo run --locked --release -p spki --example package-preview -- \
+  --test --output build/isolate-preview-test.spk
+```
+
+The helper shares `spki`'s SPK writer and verifier. It uses `capnp` to read the
+existing `.sandstorm/sandstorm-pkgdef.capnp`, copies the staged runtime into a
+temporary directory, writes the manifest, then signs, compresses, and verifies
+the package in Rust. It does not upload or install it. Test builds get a fresh
+identity unless `--keyring` and `--app-id` select an existing test identity.
+CI sets the test app version to its run number so subsequent builds can upgrade.
+
+For release packaging, omit `--test` and pass `--keyring PATH`. The existing
+production identity and manifest versions are preserved; missing keys fail.
+Existing output files are never overwritten.
