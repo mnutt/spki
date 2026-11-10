@@ -7,11 +7,7 @@ use isolate_protocol::{
     util_capnp::{byte_stream, handle},
     web_session_capnp::web_session as web,
 };
-use std::{
-    cell::RefCell,
-    rc::{Rc, Weak},
-    time::Duration,
-};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 const CHUNK: usize = 64 * 1024;
@@ -276,7 +272,7 @@ struct Exchange {
     failed: tokio::sync::watch::Sender<Option<String>>,
 }
 pub(crate) struct Pending {
-    runtime: Weak<Runtime>,
+    runtime: Rc<Runtime>,
     exchange: Rc<Exchange>,
     head: oneshot::Receiver<Head>,
     body: mpsc::Receiver<Chunk>,
@@ -331,7 +327,7 @@ impl Runtime {
         let (failed, failure) = tokio::sync::watch::channel(None);
         Ok((
             Pending {
-                runtime: Rc::downgrade(self),
+                runtime: self.clone(),
                 exchange: Rc::new(Exchange {
                     context: result.get_context()?,
                     _slot: slot,
@@ -367,12 +363,14 @@ impl Pending {
         }
     }
     fn retain_native(&self) {
-        if let Some(runtime) = self.runtime.upgrade() {
-            let exchange = self.exchange.clone();
-            runtime.requests.borrow_mut().spawn_local(async move {
-                let _ = exchange.context.client.when_resolved().await;
-            });
-        }
+        let lease = self.runtime.callback_leases.clone();
+        let exchange = self.exchange.clone();
+        self.runtime.requests.borrow_mut().spawn_local(async move {
+            // Native callbacks can outlive HTTP EOF. Retirement bounds this lease
+            // and aborts the task if the peer never releases its request context.
+            let _lease = lease;
+            let _ = exchange.context.client.when_resolved().await;
+        });
     }
     async fn respond(
         mut self,
@@ -718,6 +716,108 @@ impl Utf8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct TestWorker;
+    impl isolate_protocol::isolate_host_capnp::hosted_isolate::Server for TestWorker {
+        async fn keep_alive(
+            self: Rc<Self>,
+            _: isolate_protocol::isolate_host_capnp::hosted_isolate::KeepAliveParams,
+            _: isolate_protocol::isolate_host_capnp::hosted_isolate::KeepAliveResults,
+        ) -> capnp::Result<()> {
+            Ok(())
+        }
+    }
+    struct TestContext;
+    impl http::http_service::server_request_context::Server for TestContext {}
+    struct TestService;
+    impl http::http_service::Server for TestService {
+        async fn start_request(
+            self: Rc<Self>,
+            params: http::http_service::StartRequestParams,
+            mut results: http::http_service::StartRequestResults,
+        ) -> capnp::Result<()> {
+            let mut response = params.get()?.get_context()?.start_response_request();
+            response.get().get_response()?.set_status_code(200);
+            response
+                .get()
+                .get_response()?
+                .init_body_size()
+                .set_unknown(());
+            response.send().promise.await?;
+            results
+                .get()
+                .set_context(capnp_rpc::new_client(TestContext));
+            Ok(())
+        }
+    }
+    fn test_runtime() -> Rc<Runtime> {
+        let host = Rc::new(crate::Host {
+            _driver: crate::Driver(tokio::task::spawn_local(std::future::pending())),
+            host: capnp_rpc::new_client(TestHost),
+            next: Default::default(),
+            bridge: crate::bridge::State::new(),
+        });
+        Rc::new(Runtime {
+            bridge: crate::bridge::Worker::new(host.bridge.clone()),
+            _host: host,
+            worker: capnp_rpc::new_client(TestWorker),
+            service: capnp_rpc::new_client(TestService),
+            requests: RefCell::new(tokio::task::JoinSet::new()),
+            callback_leases: Rc::new(()),
+            request_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(256)),
+        })
+    }
+    struct TestHost;
+    impl isolate_protocol::isolate_host_capnp::isolate_host::Server for TestHost {}
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn pending_responses_and_native_callbacks_hold_bounded_runtime_leases() {
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let runtime = test_runtime();
+                let (pending, _) = runtime
+                    .start_stream(http::HttpMethod::Get, "slow", &[], Some(0))
+                    .await
+                    .unwrap();
+                let weak = Rc::downgrade(&runtime);
+                let drain = tokio::task::spawn_local(async move {
+                    runtime.drain(Duration::from_secs(2)).await;
+                });
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                assert!(
+                    !drain.is_finished(),
+                    "headers must not end the runtime lease"
+                );
+                assert!(weak.upgrade().is_some());
+                drop(pending); // EOF or cancellation releases the response's lease.
+                tokio::time::timeout(Duration::from_secs(1), drain)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(weak.upgrade().is_none());
+
+                let runtime = test_runtime();
+                let (pending, _) = runtime
+                    .start_stream(http::HttpMethod::Get, "native", &[], Some(0))
+                    .await
+                    .unwrap();
+                pending.retain_native();
+                drop(pending);
+                // A never-released native context cannot keep a retired worker alive forever.
+                tokio::time::timeout(
+                    Duration::from_secs(1),
+                    runtime.drain(Duration::from_millis(30)),
+                )
+                .await
+                .unwrap();
+                let weak = Rc::downgrade(&runtime);
+                runtime.requests.borrow_mut().abort_all();
+                drop(runtime);
+                tokio::task::yield_now().await;
+                assert!(weak.upgrade().is_none());
+            })
+            .await;
+    }
+
     fn sink(size: Option<u64>) -> (host_stream::Client, mpsc::Receiver<Chunk>) {
         let (sender, receiver) = mpsc::channel(1);
         (

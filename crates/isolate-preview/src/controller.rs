@@ -163,13 +163,7 @@ impl Controller {
         let (_, old) = self.current.replace((revision.clone(), runtime));
         self.recovery.set(false);
         guard.0 = None;
-        tokio::task::spawn_local(async move {
-            // Existing requests retain their snapshot until completion or their request timeout.
-            while Rc::strong_count(&old) > 1 {
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-            let _ = old.worker.stop_request().send().promise.await;
-        });
+        tokio::task::spawn_local(old.retire());
         Ok(revision)
     }
 }

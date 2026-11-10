@@ -76,8 +76,7 @@ pub fn bundle(js: &[u8]) -> Result<Vec<u8>> {
     let mut binding = bindings.get(0);
     binding.set_name("STORAGE");
     binding.set_http_service("storage");
-    let sdk: std::collections::BTreeMap<String, String> =
-        serde_json::from_str(SDK_MODULES_JSON)?;
+    let sdk: std::collections::BTreeMap<String, String> = serde_json::from_str(SDK_MODULES_JSON)?;
     let wrapper = include_bytes!("../sdk/entry.js");
     let mut modules = source.init_modules((sdk.len() + 2) as u32);
     let mut entry = modules.reborrow().get(0);
@@ -114,6 +113,7 @@ pub struct Runtime {
     pub worker: isolate_protocol::isolate_host_capnp::hosted_isolate::Client,
     service: http::http_service::Client,
     requests: RefCell<tokio::task::JoinSet<()>>,
+    callback_leases: Rc<()>,
     request_slots: std::sync::Arc<tokio::sync::Semaphore>,
 }
 impl Host {
@@ -173,6 +173,7 @@ impl Host {
             bridge,
             service,
             requests: RefCell::new(tokio::task::JoinSet::new()),
+            callback_leases: Rc::new(()),
             request_slots: std::sync::Arc::new(tokio::sync::Semaphore::new(256)),
         })
     }
@@ -183,6 +184,26 @@ impl Drop for Runtime {
     }
 }
 impl Runtime {
+    // Response bodies and native callbacks own a runtime lease through Rc. A
+    // replacement permits at most one minute of draining, even for active streams.
+    async fn retire(self: Rc<Self>) {
+        self.drain(std::time::Duration::from_secs(60)).await;
+        self.bridge.stop();
+        self.requests.borrow_mut().abort_all();
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            self.worker.stop_request().send().promise,
+        )
+        .await;
+    }
+    async fn drain(self: &Rc<Self>, deadline: std::time::Duration) {
+        let _ = tokio::time::timeout(deadline, async {
+            while Rc::strong_count(self) > 1 || Rc::strong_count(&self.callback_leases) > 1 {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await;
+    }
     pub async fn start(
         stream: tokio::net::UnixStream,
         js: &[u8],
