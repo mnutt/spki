@@ -499,7 +499,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path().join("project");
         fs::create_dir(&root).unwrap();
-        let helper = temp.path().join("helper.ts");
+        let helper = temp.path().canonicalize().unwrap().join("helper.ts");
         fs::write(&helper, "export const value: number = 42;").unwrap();
         let worker = root.join("worker.ts");
         fs::write(&worker, "export {value} from '../helper';").unwrap();

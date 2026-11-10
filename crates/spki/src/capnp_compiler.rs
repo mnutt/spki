@@ -185,8 +185,28 @@ mod tests {
                         .get_root::<capnp::schema_capnp::code_generator_request::Reader>()?;
                     let mut result = std::collections::BTreeMap::new();
                     for node in request.get_nodes()? {
+                        // Compiler versions may add diagnostic-only fields (e.g. source
+                        // spans) beyond this schema. Compare all fields known to the
+                        // generated schema, preserving defaults, unions and constants.
+                        let capnp::dynamic_value::Reader::Struct(source) = node.into() else {
+                            unreachable!()
+                        };
+                        let mut normalized = capnp::message::Builder::new_default();
+                        let capnp::dynamic_value::Builder::Struct(mut target) = normalized
+                            .init_root::<capnp::schema_capnp::node::Builder>()
+                            .into()
+                        else {
+                            unreachable!()
+                        };
+                        for field in source.get_schema().get_fields()? {
+                            if source.has(field)? {
+                                target.set(field, source.get(field)?)?;
+                            }
+                        }
                         let mut message = capnp::message::Builder::new_default();
-                        message.set_root_canonical(node)?;
+                        message.set_root_canonical(
+                            normalized.get_root_as_reader::<capnp::schema_capnp::node::Reader>()?,
+                        )?;
                         result.insert(
                             node.get_id(),
                             (
