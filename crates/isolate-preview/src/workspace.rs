@@ -13,7 +13,12 @@ use isolate_protocol::{
     web_session_capnp::web_session as web,
 };
 use std::{
-    cell::RefCell, collections::BTreeMap, os::fd::OwnedFd, path::PathBuf, process::Stdio, rc::Rc,
+    cell::{Cell, RefCell},
+    collections::{BTreeMap, BTreeSet},
+    os::fd::OwnedFd,
+    path::PathBuf,
+    process::Stdio,
+    rc::{Rc, Weak},
     time::Duration,
 };
 
@@ -34,22 +39,27 @@ pub fn validate_id(id: &str) -> anyhow::Result<()> {
     );
     Ok(())
 }
-struct Project {
+struct ProjectRuntime {
     view: Rc<View>,
-    _process: tokio::process::Child,
-    keepalive: tokio::task::JoinHandle<()>,
+    alive: Rc<Cell<bool>>,
+    monitor: tokio::task::JoinHandle<()>,
 }
-impl Drop for Project {
+impl Drop for ProjectRuntime {
     fn drop(&mut self) {
-        self.keepalive.abort();
+        self.monitor.abort();
     }
+}
+// Each project serializes its own startup; other projects can continue serving.
+#[derive(Default)]
+struct ProjectSlot {
+    runtime: tokio::sync::Mutex<Option<ProjectRuntime>>,
 }
 pub struct Workspace {
     pub root: Rc<View>,
     host: PathBuf,
     directory: PathBuf,
-    projects: RefCell<BTreeMap<String, Rc<Project>>>,
-    opening: tokio::sync::Mutex<()>,
+    projects: RefCell<BTreeMap<String, Rc<ProjectSlot>>>,
+    admission: tokio::sync::Mutex<()>,
 }
 impl Workspace {
     pub fn new(root: Rc<View>, host: PathBuf, directory: PathBuf) -> Rc<Self> {
@@ -58,7 +68,7 @@ impl Workspace {
             host,
             directory,
             projects: RefCell::new(BTreeMap::new()),
-            opening: tokio::sync::Mutex::new(()),
+            admission: tokio::sync::Mutex::new(()),
         })
     }
     async fn names(&self) -> anyhow::Result<Vec<String>> {
@@ -90,23 +100,57 @@ impl Workspace {
             return Ok(self.root.clone());
         }
         validate_id(id)?;
-        let _lock = self.opening.lock().await;
-        if let Some(project) = self.projects.borrow().get(id) {
-            return Ok(project.view.clone());
+        let slot = self.slot(id, create).await?;
+        let mut current = slot.runtime.lock().await;
+        if let Some(runtime) = current.as_ref().filter(|runtime| runtime.alive.get()) {
+            return Ok(runtime.view.clone());
+        }
+        // Drop a failed generation before spawning its replacement. Startup cancellation
+        // leaves an empty slot, so the next request can retry from persisted state.
+        *current = None;
+        let runtime = self.start_project(id).await?;
+        let view = runtime.view.clone();
+        *current = Some(runtime);
+        Ok(view)
+    }
+    async fn slot(&self, id: &str, create: bool) -> anyhow::Result<Rc<ProjectSlot>> {
+        if let Some(slot) = self.projects.borrow().get(id) {
+            return Ok(slot.clone());
+        }
+        // Only admission and the on-disk project count are global. Never hold this
+        // lock while starting or contacting a host.
+        let _admission = self.admission.lock().await;
+        if let Some(slot) = self.projects.borrow().get(id) {
+            return Ok(slot.clone());
         }
         let names = self.names().await?;
         anyhow::ensure!(
-            names.iter().any(|n| n == id) || create,
+            names.iter().any(|name| name == id) || create,
             "unknown workspace project"
         );
+        let mut projects = self.projects.borrow_mut();
+        // Failed/cancelled starts must not consume the project limit forever.
+        projects.retain(|_, slot| {
+            Rc::strong_count(slot) > 1
+                || slot
+                    .runtime
+                    .try_lock()
+                    .map_or(true, |runtime| runtime.is_some())
+        });
+        let reserved: BTreeSet<_> = names
+            .iter()
+            .chain(projects.keys())
+            .map(String::as_str)
+            .collect();
         anyhow::ensure!(
-            names.iter().any(|n| n == id) || names.len() < MAX_PROJECTS,
+            reserved.contains(id) || reserved.len() < MAX_PROJECTS,
             "workspace project limit reached (16)"
         );
-        anyhow::ensure!(
-            self.projects.borrow().len() < MAX_PROJECTS,
-            "workspace runtime limit reached (16)"
-        );
+        let slot = Rc::new(ProjectSlot::default());
+        projects.insert(id.into(), slot.clone());
+        Ok(slot)
+    }
+    async fn start_project(&self, id: &str) -> anyhow::Result<ProjectRuntime> {
         let (parent, child) = std::os::unix::net::UnixStream::pair()?;
         parent.set_nonblocking(true)?;
         let mut process = tokio::process::Command::new(&self.host)
@@ -144,33 +188,52 @@ impl Workspace {
             mode: RuntimeMode::Preview,
             title: id.into(),
         });
-        let keepalive = tokio::task::spawn_local(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(10));
-            loop {
-                interval.tick().await;
-                if controller
-                    .snapshot()
-                    .1
-                    .worker
-                    .keep_alive_request()
-                    .send()
-                    .promise
-                    .await
-                    .is_err()
-                {
-                    break;
+        let alive = Rc::new(Cell::new(true));
+        let live = alive.clone();
+        let monitor = tokio::task::spawn_local(async move {
+            // Mark the generation dead even if this task is cancelled.
+            struct Liveness(Rc<Cell<bool>>);
+            impl Drop for Liveness {
+                fn drop(&mut self) {
+                    self.0.set(false);
                 }
             }
+            let _liveness = Liveness(live.clone());
+            let keepalive = async {
+                let mut interval = tokio::time::interval(Duration::from_secs(10));
+                loop {
+                    interval.tick().await;
+                    let result = tokio::time::timeout(
+                        Duration::from_secs(20),
+                        controller
+                            .snapshot()
+                            .1
+                            .worker
+                            .keep_alive_request()
+                            .send()
+                            .promise,
+                    )
+                    .await;
+                    if !matches!(result, Ok(Ok(_))) {
+                        break;
+                    }
+                }
+            };
+            tokio::select! {
+                _ = process.wait() => (),
+                _ = keepalive => (),
+            }
+            live.set(false);
+            controller.snapshot().1.bridge.stop();
+            // A broken RPC connection can leave a live but unusable child behind.
+            let _ = process.kill().await;
+            let _ = process.wait().await;
         });
-        self.projects.borrow_mut().insert(
-            id.into(),
-            Rc::new(Project {
-                view: view.clone(),
-                _process: process,
-                keepalive,
-            }),
-        );
-        Ok(view)
+        Ok(ProjectRuntime {
+            view,
+            alive,
+            monitor,
+        })
     }
     async fn page(
         &self,
@@ -289,14 +352,22 @@ struct Session {
     api: bool,
     deploy: bool,
     selected: RefCell<Option<String>>,
-    sessions: RefCell<BTreeMap<String, web::Client>>,
+    sessions: RefCell<BTreeMap<String, (Weak<View>, web::Client)>>,
 }
 impl Session {
     async fn client(&self, id: &str) -> capnp::Result<web::Client> {
-        if let Some(session) = self.sessions.borrow().get(id) {
+        let view = self.workspace.project(id, false).await.map_err(error)?;
+        if let Some((generation, session)) = self.sessions.borrow().get(id)
+            && generation
+                .upgrade()
+                .is_some_and(|old| Rc::ptr_eq(&old, &view))
+        {
             return Ok(session.clone());
         }
-        let view = self.workspace.project(id, false).await.map_err(error)?;
+        // Rebuild the app session after recovery, even when this workspace session
+        // is still open. Do not replay the failed request itself.
+        self.sessions.borrow_mut().remove(id);
+        let generation = Rc::downgrade(&view);
         let view: ui_view::Client = capnp_rpc::new_client_from_rc(view);
         let mut request = view.new_session_request();
         request.set(self.params.get()?)?;
@@ -304,7 +375,7 @@ impl Session {
         let session = web::Client::new(session.into_client_hook());
         self.sessions
             .borrow_mut()
-            .insert(id.into(), session.clone());
+            .insert(id.into(), (generation, session.clone()));
         Ok(session)
     }
     async fn target(&self, path: &str) -> capnp::Result<(web::Client, String)> {
