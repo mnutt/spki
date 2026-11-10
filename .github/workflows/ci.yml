@@ -1,0 +1,60 @@
+name: CLI builds
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cli:
+    name: spki / ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - runner: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Cap'n Proto (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y capnproto
+      - name: Install Cap'n Proto (macOS)
+        if: runner.os == 'macOS'
+        run: brew install capnp
+      - name: Set up Rust
+        run: rustup toolchain install 1.98.0 --profile minimal && rustup default 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Test
+        run: cargo test --locked --workspace
+      - name: Build CLI
+        run: cargo build --locked --release -p spki --bin spki
+      - name: Package CLI
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          target/release/spki --version
+          mkdir -p dist
+          tar -czf "dist/spki-${TARGET}.tar.gz" -C target/release spki
+          cd dist
+          shasum -a 256 "spki-${TARGET}.tar.gz" > "spki-${TARGET}.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spki-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error

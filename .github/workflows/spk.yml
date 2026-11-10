@@ -1,0 +1,83 @@
+name: Previewer SPK
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  previewer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y capnproto qemu-system-x86
+      - name: Set up Rust
+        run: rustup toolchain install 1.98.0 --profile minimal && rustup default 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: previewer
+      - name: Build and stage previewer
+        run: |
+          python3 scripts/fetch-host.py
+          cargo build --locked --release -p isolate-preview --bin isolate-preview
+          # The staging script's input path also serves local debug builds.
+          mkdir -p target/debug
+          cp target/release/isolate-preview target/debug/isolate-preview
+          python3 scripts/stage-preview.py
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.4'
+          cache: false
+      - name: Install spktool
+        run: |
+          go install github.com/mnutt/spktool/cmd/spktool@66c09e8f5c3cc53948a17c0c4cee99c8ccc094ef
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - uses: lima-vm/lima-actions/setup@v1
+        id: lima
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/lima
+          key: lima-${{ steps.lima.outputs.version }}
+      - name: Restore signing identity
+        # PR builds always use a disposable identity, without repository secrets.
+        if: github.event_name != 'pull_request'
+        env:
+          RELEASE_KEYRING: ${{ secrets.SANDSTORM_KEYRING_B64 }}
+          TEST_KEYRING: ${{ secrets.SANDSTORM_TEST_KEYRING_B64 }}
+          TEST_APP_ID: ${{ vars.SANDSTORM_TEST_APP_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$HOME/.sandstorm"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            if [[ -z "$RELEASE_KEYRING" ]]; then
+              echo '::error::Set SANDSTORM_KEYRING_B64 to the previewer signing keyring before building a release tag.'
+              exit 1
+            fi
+            printf '%s' "$RELEASE_KEYRING" | base64 --decode > "$HOME/.sandstorm/sandstorm-keyring"
+          elif [[ -n "$TEST_KEYRING" && -n "$TEST_APP_ID" ]]; then
+            printf '%s' "$TEST_KEYRING" | base64 --decode > "$HOME/.sandstorm/sandstorm-keyring"
+            printf '%s\n' "$TEST_APP_ID" > .sandstorm/sandstorm-test-app-id
+          fi
+      - name: Provision packaging VM
+        run: spktool vm create --provider lima
+      - name: Build SPK
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            spktool pack --provider lima "build/isolate-preview-${GITHUB_REF_NAME}.spk"
+          else
+            spktool pack --provider lima --dev --set-version "$GITHUB_SHA" "build/isolate-preview-test-${GITHUB_SHA}.spk"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolate-preview-spk
+          path: build/*.spk
+          if-no-files-found: error
