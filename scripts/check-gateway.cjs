@@ -155,7 +155,8 @@ function request(webkey, route) {
     cli(['--profile','starter','init',projectDir]);
     cli(['--project',projectDir,'auth','--webkey-stdin','--allow-local-http'],developer);
     cli(['--project',projectDir,'dev','--once']);
-    frame=await require('./workspace-frame.cjs')(frame,fs.readFileSync(path.join(projectDir,'sandstorm-pkgdef.capnp'),'utf8').match(/project = "([^"]+)"/)[1]);
+    const workspaceProject=fs.readFileSync(path.join(projectDir,'sandstorm-pkgdef.capnp'),'utf8').match(/project = "([^"]+)"/)[1];
+    frame=await require('./workspace-frame.cjs')(frame,workspaceProject);
     await frame.locator('h1').filter({hasText:'Hello from your isolate'}).waitFor({timeout:20000});
     const watcher=spawn(path.join(root,'target/debug/spki'),['dev'],{env,cwd:path.join(projectDir,'src'),stdio:['ignore','pipe','pipe']});
     let watchOutput='';
@@ -183,6 +184,8 @@ function request(webkey, route) {
       await waitOutput('spki-stream-exception');
       await call('shutdownGrain',grainId);
       await waitOutput('Grain restarted; resuming');
+      // Restart restores the workspace shell and replaces its application iframe.
+      frame=await require('./workspace-frame.cjs')(await appFrame(),workspaceProject);
       const beforeLogs=watchOutput.split('spki-stream-console').length;
       await frame.evaluate(()=>fetch('/health'));
       for(let i=0;i<100 && watchOutput.split('spki-stream-console').length===beforeLogs;i++) await page.waitForTimeout(100);
@@ -201,7 +204,7 @@ function request(webkey, route) {
       fs.writeFileSync(projectFile,configuration.replace('src/worker.ts','src/alternate.ts'));
       await frame.locator('h1[data-config="changed"]').waitFor({timeout:20000});
       fs.writeFileSync(projectFile,configuration.replace('profile = "starter"','profile = "another"'));
-      await waitOutput('preview profile changed');
+      await waitOutput('preview profile or project changed');
       for(const secret of secrets) assert(!watchOutput.includes(secret),'watcher leaked a credential');
     } finally {
       watcher.kill('SIGTERM');
@@ -216,7 +219,7 @@ function request(webkey, route) {
     frontendText=frontendText.replace('  compatibilityDate', '  ui = (entrypoints = ["ui/main.ts"]),\n  assets = ["public"],\n  schemas = ["counter.capnp"],\n  compatibilityDate');
     fs.writeFileSync(frontendConfig, frontendText);
     cli(['--project',projectDir,'dev','--once']);
-    await frame.goto(new URL('/',frame.url()).href);
+    frame=await require('./workspace-frame.cjs')(await appFrame(),workspaceProject);
     await frame.locator('output').filter({hasText:'0'}).waitFor({timeout:20000});
     await frame.getByRole('button',{name:'Increment',exact:true}).click();
     await frame.locator('output').filter({hasText:'1'}).waitFor();
