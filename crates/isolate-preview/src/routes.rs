@@ -16,7 +16,7 @@ fn invalid(message: &str) -> capnp::Error {
 
 // Validate decoded paths too: URL parsers normalize encoded dots and backslashes.
 // Reject encoded separators and nested escaping rather than allowing ambiguous scopes.
-fn validate_path(path: &str) -> capnp::Result<()> {
+pub(crate) fn validate_path(path: &str) -> capnp::Result<()> {
     if path.len() > 8192 || path.chars().any(|c| c.is_control()) || path.contains(['#', '\\']) {
         return Err(invalid("invalid capability path"));
     }
@@ -133,6 +133,7 @@ impl Route {
         path: String,
         body: Vec<u8>,
         mut headers: Vec<(String, String)>,
+        stream: Option<isolate_protocol::util_capnp::byte_stream::Client>,
         mut results: web::GetResults,
     ) -> capnp::Result<()> {
         let path = scoped_path(&self.prefix, &path)?;
@@ -154,6 +155,21 @@ impl Route {
             return Err(invalid("application awaits recovery"));
         }
         let runtime = controller.snapshot().1;
+        if let Some(stream) = stream {
+            return crate::streaming::fetch(
+                &runtime,
+                crate::streaming::Request {
+                    method,
+                    path,
+                    headers,
+                    revision: None,
+                },
+                &body,
+                stream,
+                results,
+            )
+            .await;
+        }
         let mut response = tokio::time::timeout(
             std::time::Duration::from_secs(20),
             runtime.fetch_with_headers(method, &path, &body, &headers),
@@ -185,6 +201,99 @@ fn upload_headers(
     Ok(headers)
 }
 impl web::Server for Route {
+    async fn post_streaming(
+        self: Rc<Self>,
+        params: web::PostStreamingParams,
+        mut results: web::PostStreamingResults,
+    ) -> capnp::Result<()> {
+        let p = params.get()?;
+        let path = scoped_path(&self.prefix, p.get_path()?.to_str()?)?;
+        let mut headers = crate::http_adapter::request_headers(p.get_context()?)?;
+        crate::streaming::content_headers(
+            &mut headers,
+            p.get_mime_type()?.to_str()?,
+            p.get_encoding()?.to_str()?,
+        )?;
+        headers.push((
+            "x-sandstorm-session-type".into(),
+            if self.native == "apiSession" {
+                "api"
+            } else {
+                "web"
+            }
+            .into(),
+        ));
+        let controller = self
+            .controller
+            .upgrade()
+            .ok_or_else(|| invalid("grain closed"))?;
+        if controller.is_recovering() {
+            return Err(invalid("application awaits recovery"));
+        }
+        let runtime = controller.snapshot().1;
+        results.get().set_stream(
+            crate::streaming::upload(
+                &runtime,
+                crate::streaming::Request {
+                    method: HttpMethod::Post,
+                    path,
+                    headers,
+                    revision: None,
+                },
+                p.get_expected_size(),
+                p.get_context()?.get_response_stream()?,
+            )
+            .await?,
+        );
+        Ok(())
+    }
+    async fn put_streaming(
+        self: Rc<Self>,
+        params: web::PutStreamingParams,
+        mut results: web::PutStreamingResults,
+    ) -> capnp::Result<()> {
+        let p = params.get()?;
+        let path = scoped_path(&self.prefix, p.get_path()?.to_str()?)?;
+        let mut headers = crate::http_adapter::request_headers(p.get_context()?)?;
+        crate::streaming::content_headers(
+            &mut headers,
+            p.get_mime_type()?.to_str()?,
+            p.get_encoding()?.to_str()?,
+        )?;
+        headers.push((
+            "x-sandstorm-session-type".into(),
+            if self.native == "apiSession" {
+                "api"
+            } else {
+                "web"
+            }
+            .into(),
+        ));
+        let controller = self
+            .controller
+            .upgrade()
+            .ok_or_else(|| invalid("grain closed"))?;
+        if controller.is_recovering() {
+            return Err(invalid("application awaits recovery"));
+        }
+        let runtime = controller.snapshot().1;
+        results.get().set_stream(
+            crate::streaming::upload(
+                &runtime,
+                crate::streaming::Request {
+                    method: HttpMethod::Put,
+                    path,
+                    headers,
+                    revision: None,
+                },
+                p.get_expected_size(),
+                p.get_context()?.get_response_stream()?,
+            )
+            .await?,
+        );
+        Ok(())
+    }
+
     async fn get(
         self: Rc<Self>,
         params: web::GetParams,
@@ -201,6 +310,7 @@ impl web::Server for Route {
             p.get_path()?.to_str()?.to_owned(),
             vec![],
             crate::http_adapter::request_headers(p.get_context()?)?,
+            crate::grain::response_stream(p.get_context()?)?,
             results,
         )
         .await
@@ -223,6 +333,7 @@ impl web::Server for Route {
             p.get_path()?.to_str()?.to_owned(),
             content.get_content()?.to_vec(),
             headers,
+            crate::grain::response_stream(p.get_context()?)?,
             results,
         )
         .await
@@ -245,6 +356,7 @@ impl web::Server for Route {
             p.get_path()?.to_str()?.to_owned(),
             content.get_content()?.to_vec(),
             headers,
+            crate::grain::response_stream(p.get_context()?)?,
             results,
         )
         .await
@@ -267,6 +379,7 @@ impl web::Server for Route {
             p.get_path()?.to_str()?.to_owned(),
             content.get_content()?.to_vec(),
             headers,
+            crate::grain::response_stream(p.get_context()?)?,
             results,
         )
         .await
@@ -279,8 +392,15 @@ impl web::Server for Route {
         let params = params.get()?;
         let path = params.get_path()?.to_str()?.to_owned();
         let headers = crate::http_adapter::request_headers(params.get_context()?)?;
-        self.respond(HttpMethod::Delete, path, vec![], headers, results)
-            .await
+        self.respond(
+            HttpMethod::Delete,
+            path,
+            vec![],
+            headers,
+            crate::grain::response_stream(params.get_context()?)?,
+            results,
+        )
+        .await
     }
 }
 

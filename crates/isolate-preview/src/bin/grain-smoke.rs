@@ -94,7 +94,10 @@ async fn main() -> Result<()> {
                 cookie.set_key("test");
                 cookie.set_value("cookie-value");
             }
-            context.set_response_stream(capnp_rpc::new_client(StreamPrinter));
+            let (finished, mut completion) = tokio::sync::watch::channel(false);
+            if std::env::var_os("SPKI_SMOKE_STREAM").is_some() {
+                context.set_response_stream(capnp_rpc::new_client(StreamPrinter(finished)));
+            }
             let context = context.into_reader();
             macro_rules! body_request {
                 ($request:expr) => {{
@@ -151,8 +154,16 @@ async fn main() -> Result<()> {
                 };
                 let handle = handle?;
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
-                    handle.ping_request().send().promise.await?;
+                    if *completion.borrow() {
+                        task.abort();
+                        return Ok(());
+                    }
+                    tokio::select! {
+                        result = completion.changed() => { result?; }
+                        _ = tokio::time::sleep(std::time::Duration::from_secs(20)) => {
+                            handle.ping_request().send().promise.await?;
+                        }
+                    }
                 }
             }
             let web::response::content::body::Bytes(bytes) = content.get_body().which()? else {
@@ -200,8 +211,24 @@ fn inspect(response: web::response::Reader<'_>) -> Result<serde_json::Value> {
     Ok(value)
 }
 
-struct StreamPrinter;
+struct StreamPrinter(tokio::sync::watch::Sender<bool>);
 impl isolate_protocol::util_capnp::byte_stream::Server for StreamPrinter {
+    async fn done(
+        self: std::rc::Rc<Self>,
+        _: isolate_protocol::util_capnp::byte_stream::DoneParams,
+        _: isolate_protocol::util_capnp::byte_stream::DoneResults,
+    ) -> capnp::Result<()> {
+        self.0.send_replace(true);
+        Ok(())
+    }
+    async fn expect_size(
+        self: std::rc::Rc<Self>,
+        _: isolate_protocol::util_capnp::byte_stream::ExpectSizeParams,
+        _: isolate_protocol::util_capnp::byte_stream::ExpectSizeResults,
+    ) -> capnp::Result<()> {
+        Ok(())
+    }
+
     async fn write(
         self: std::rc::Rc<Self>,
         params: isolate_protocol::util_capnp::byte_stream::WriteParams,

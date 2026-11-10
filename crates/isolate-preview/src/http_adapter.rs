@@ -1,7 +1,8 @@
 //! Translation of the HTTP subset supported by Sandstorm WebSession.
 //!
-//! Buffered GET/HEAD/POST/PUT/PATCH/DELETE are supported. Streaming uploads fall back
-//! to buffered requests (9 MiB maximum); worker responses are bounded to 1 MiB.
+//! GET/HEAD/POST/PUT/PATCH/DELETE metadata is translated here. Application bodies
+//! use the streaming module when the caller supplies a response stream; legacy
+//! callers and control routes retain bounded buffering.
 //! WebSockets, WebDAV and OPTIONS are not implemented. Cache policy remains no-store.
 //! Only schema-whitelisted additional headers are forwarded. Security headers such
 //! as CSP are controlled by Sandstorm, not an unrestricted HTTP proxy. Cookies use

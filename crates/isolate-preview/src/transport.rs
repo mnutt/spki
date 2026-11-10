@@ -143,7 +143,7 @@ impl http::http_service::client_request_context::Server for ResponseContext {
     }
 }
 
-fn read_headers(
+pub(crate) fn read_headers(
     headers: capnp::struct_list::Reader<'_, http::http_header::Owned>,
 ) -> capnp::Result<Vec<(String, String)>> {
     let mut output = Vec::new();

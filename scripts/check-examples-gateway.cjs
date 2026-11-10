@@ -29,7 +29,7 @@ function request(webkey, route) {
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',args:['--host-resolver-rules=MAP *.local.sandstorm.io 127.0.0.1, MAP local.sandstorm.io 127.0.0.1','--no-proxy-server']});
   const context = await browser.newContext();
   // These checks navigate explicitly; automatic reload can destroy evaluate() mid-assertion.
-  await context.route('**/__spki/v1/reload.js', route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
+  await context.route(url=>url.pathname==='/__spki/v1/reload.js', route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
   const page = await context.newPage();page.setDefaultTimeout(60000);
   page.on('pageerror', error=>console.error('browser error:',redact(String(error))));
   let grainId;
@@ -98,12 +98,29 @@ function request(webkey, route) {
     cli(['--profile','viewer','auth','--webkey-stdin','--allow-local-http'],viewer,false);
 
     if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); }
-    const names=process.env.SPKI_EXAMPLES?.split(',') || ['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http','capability-provider','service-binding'];
+    const names=process.env.SPKI_EXAMPLES?.split(',') || ['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http','capability-provider','service-binding','streaming'];
     for(const name of names) {
       progress(`checking example ${name}`);
       const projectDir=path.join(directory,name);
       fs.cpSync(path.join(root,'examples',name),projectDir,{recursive:true,
         filter:p=>!p.split(path.sep).some(part=>['dist','node_modules','.spki'].includes(part))});
+      if(name==='streaming') {
+        const worker=path.join(projectDir,'worker.js');
+        fs.writeFileSync(worker,`import {sandstorm} from 'sandstorm:api';
+`+fs.readFileSync(worker,'utf8')
+          .replace('const encoder =',`let canceled=0,produced=0;
+const encoder =`)
+          .replace('    async pull(controller) {',`    cancel() { canceled++; },
+    async pull(controller) {`)
+          .replace('      offset += size;', '      offset += size;produced += size;')
+          .replace('export default {',`export default {
+  connect(request,env) { return sandstorm(request,env).webSession({pathPrefix:""}); },`)
+          .replace('    if (request.method === "GET" && url.pathname === "/") {',`
+            if(url.pathname==='/test-canceled') return Response.json({canceled,produced});
+            if(url.pathname==='/test-echo') return new Response(request.body,{headers:{'content-type':'application/octet-stream'}});
+            if(url.pathname==='/test-error') return new Response(new ReadableStream({start(c){c.enqueue(encoder.encode('first'));setTimeout(()=>c.error(new Error('stream failed')),100);}}),{headers:{'content-length':'4096'}});
+            if (request.method === "GET" && url.pathname === "/") {`));
+      }
       if(name==='capability-provider') {
         const worker=path.join(projectDir,'worker.js');
         fs.writeFileSync(worker,fs.readFileSync(worker,'utf8').replace('    try {', `    try {
@@ -138,10 +155,80 @@ function request(webkey, route) {
         return frame.evaluate(async({route,post})=>{
           const response=await fetch(route,{method:post?'POST':'GET'});
           if(!response.ok) throw new Error(await response.text());
-          return response.json();
+          const text=await response.text();
+          try {return JSON.parse(text);} catch {throw new Error(`Invalid JSON for ${route}: status=${response.status}, received=${text.length}, declared=${response.headers.get('content-length')}`);}
         },{route,post});
       }
-      if(name==='service-binding') {
+      if(name==='streaming') {
+        progress('checking incremental download and uploads beyond the old buffer limits');
+        const result=await frame.evaluate(async()=>{
+          const start=performance.now();
+          const response=await fetch('/download?totalBytes=262144&chunkBytes=65536&delayMs=200');
+          const reader=response.body.getReader();
+          let first=0,bytes=0,chunks=0;
+          while(true){const r=await reader.read();if(r.done)break;if(!chunks)first=performance.now()-start;chunks++;bytes+=r.value.length;}
+          return {first,elapsed:performance.now()-start,bytes,chunks};
+        });
+        assert.equal(result.bytes,262144);assert(result.chunks>1);assert(result.elapsed-result.first>250,JSON.stringify(result));
+        const stats=await frame.evaluate(async()=>{
+          const body=new Uint8Array(12*1024*1024).fill(97);
+          const r=await fetch('/upload',{method:'POST',body});
+          if(!r.ok)throw new Error(await r.text());return r.json();
+        });
+        assert.equal(stats.bytes,12*1024*1024);assert.equal(stats.checksum,12*1024*1024*97);assert(stats.chunks>1);
+        const roundtrip=await frame.evaluate(async()=>{
+          const response=await fetch('/roundtrip',{method:'POST',body:new Uint8Array(2*1024*1024).fill(7)});
+          const bytes=new Uint8Array(await response.arrayBuffer());return {length:bytes.length,valid:bytes.every(b=>b===7)};
+        });
+        assert.deepEqual(roundtrip,{length:2*1024*1024,valid:true});
+        progress('checking response cancellation and mid-stream failure');
+        await frame.evaluate(async()=>{const r=await fetch('/download?totalBytes=16777216&chunkBytes=65536&delayMs=100');const reader=r.body.getReader();await reader.read();await reader.cancel();});
+        const afterCancel=await json('/test-canceled');
+        await page.waitForTimeout(600);
+        const settled=await json('/test-canceled');
+        assert(settled.produced-afterCancel.produced<=2*65536,JSON.stringify({afterCancel,settled}));
+        const failed=await frame.evaluate(async()=>{try {const r=await fetch('/test-error');const body=await r.text();return {failed:false,status:r.status,length:r.headers.get('content-length'),body};}catch{return {failed:true};}});
+        assert(failed.failed,JSON.stringify(failed));
+        progress('checking duplex streaming and malformed lengths over native RPC');
+        const duplex=await frame.evaluate(async()=>{
+          const {WebSession}=await import('/__sandstorm/capnp/sandstorm/web-session.capnp.js');
+          const {ByteStream}=await import('/__sandstorm/capnp/sandstorm/util.capnp.js');
+          const {connectApplication}=await import('/__sandstorm/native-capnp/client.js');
+          const service=await connectApplication(WebSession);
+          const wait=ms=>new Promise(r=>setTimeout(r,ms));
+          try {
+            const bytes=[];let finished=false;
+            const sink=new ByteStream.Server({write({data}){bytes.push(...data.toUint8Array());},done(){finished=true;},expectSize(){}}).client();
+            const {stream}=await service.postStreaming({path:'test-echo',mimeType:'application/octet-stream',encoding:'',expectedSize:0n,context:{responseStream:sink}});
+            const response=await stream.getResponse();
+            await stream.write({data:new Uint8Array([1,2,3])});
+            for(let i=0;i<100 && bytes.length<3;i++)await wait(25);
+            const beforeEOF=bytes.length===3 && !finished;
+            await stream.write({data:new Uint8Array([4,5])});await stream.done();
+            for(let i=0;i<400 && !finished;i++)await wait(25);
+            const tooLong=await service.postStreaming({path:'upload',mimeType:'application/octet-stream',expectedSize:3n,context:{responseStream:sink}});
+            let oversized=false;try{await tooLong.stream.write({data:new Uint8Array(4)});}catch{oversized=true;}
+            const short=await service.putStreaming({path:'test-echo',mimeType:'application/octet-stream',expectedSize:3n,context:{responseStream:sink}});
+            await short.stream.write({data:new Uint8Array(2)});
+            let truncated=false;try{await short.stream.done();}catch{truncated=true;}
+            return {beforeEOF,finished,bytes,oversized,truncated};
+          } catch(error) {throw new Error(String(error));} finally {service.transport.close();}
+        });
+        assert(duplex.beforeEOF && duplex.finished && duplex.oversized && duplex.truncated,JSON.stringify(duplex));
+        assert.deepEqual(duplex.bytes,[1,2,3,4,5]);
+        progress('checking worker replacement cancels an active download');
+        await frame.evaluate(async()=>{
+          const r=await fetch('/download?totalBytes=16777216&chunkBytes=65536&delayMs=100');
+          const reader=r.body.getReader();await reader.read();
+          window.oldDownload=(async()=>{try{while(!(await reader.read()).done){}return false;}catch{return true;}})();
+        });
+        const worker=path.join(projectDir,'worker.js');
+        fs.writeFileSync(worker,fs.readFileSync(worker,'utf8').replace('streamedRequest: true','streamedRequest: true, generation: 2'));
+        cli(['--project',projectDir,'dev','--once']);
+        assert(await frame.evaluate(()=>Promise.race([window.oldDownload,new Promise((_,reject)=>setTimeout(()=>reject(new Error('old stream survived replacement')),5000))])));
+        assert.equal((await json('/upload',true)).generation,2);
+        console.log('PASS: incremental downloads, large uploads, cancellation, errors, duplex RPC, length checks, and replacement');
+      } else if(name==='service-binding') {
         const before=await json('/json');
         assert.equal(before.textBinding,'Hello from a binding');
         assert.deepEqual(before.jsonBinding,{enabled:true,count:3});

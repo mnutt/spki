@@ -36,7 +36,7 @@ for directory in ['bin', 'lib', 'lib64', 'usr/lib', 'usr/lib64', 'usr/share/lice
         if path.is_file():
             files[str(path.relative_to(root))] = {'sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'mode': path.stat().st_mode & 0o777}
 fingerprint = hashlib.sha256()
-for value in [pin['binarySha256'].encode(), b'2026-06-10', b'spki-native-bindings-v1', Path('crates/isolate-preview/sdk/modules.json').read_bytes(), Path('crates/isolate-preview/sdk/entry.js').read_bytes(), Path('crates/isolate-preview/browser/client.js').read_bytes(), b'']:
+for value in [pin['binarySha256'].encode(), b'2026-06-10', b'spki-native-bindings-v1-http-streaming-v1', Path('crates/isolate-preview/sdk/modules.json').read_bytes(), Path('crates/isolate-preview/sdk/entry.js').read_bytes(), Path('crates/isolate-preview/browser/client.js').read_bytes(), b'']:
     fingerprint.update(len(value).to_bytes(8, 'little')); fingerprint.update(value)
 (root / 'runtime.json').write_text(json.dumps({'formatVersion':1, 'target':'linux-x86_64', 'hostSha256':pin['binarySha256'], 'sdkRevision':fingerprint.hexdigest(), 'files':files}, indent=2)+'\n')
 print(root.resolve())

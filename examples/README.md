@@ -9,6 +9,7 @@ build or run them. Upstream signing keys and generated worker bundles are omitte
 | Example | What it demonstrates |
 | --- | --- |
 | [hello](hello/) | Request metadata and runtime bindings |
+| [streaming](streaming/) | Incremental downloads and streamed uploads |
 | [service-binding](service-binding/) | Native text, JSON, binary data, and loopback service bindings |
 | [storage-counter](storage-counter/) | Persistent key/value storage, JSON and text imports |
 | [app-skeleton](app-skeleton/) | HTTP routes, session identity, validation, and storage |
@@ -57,20 +58,6 @@ and RPC examples remain live capabilities.
 
 `api-powerbox` demonstrates durable imported HTTP grants: save, restore after
 a grain restart, and drop the saved reference. Its tokens stay server-side.
-
-## Pending upstream examples
-
-Reference source is retained under `pending/`, with no runnable SPKI package
-configuration. These need runtime work before they can be ported faithfully:
-
-| Example | Missing support |
-| --- | --- |
-| [streaming](pending/streaming/) | Streaming WebSession uploads and incremental HTTP responses |
-
-The runnable object store implements a read-only `WebSession` directly in JS.
-It does not exercise the route-backed factory or durable capability tokens.
-The runtime's HTTP adapter currently buffers bounded bodies, so the upstream
-streaming demo is not advertised as runnable.
 
 ## Checks
 

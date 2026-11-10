@@ -11,6 +11,7 @@ pub mod protocol;
 mod reload;
 mod routes;
 pub mod storage;
+mod streaming;
 use anyhow::{Result, ensure};
 use futures::AsyncReadExt;
 use isolate_protocol::{

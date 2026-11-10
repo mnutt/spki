@@ -126,15 +126,15 @@
     },
     {
       "upstream": "isolate-streaming",
-      "path": "pending/streaming",
-      "status": "pending",
+      "path": "streaming",
+      "status": "runnable",
       "upstreamSha256": {
         "README.md": "e9a72cd2f36150706307eef8e615791709ed9575a7117c808b4337bf09dccb8e",
         "metadata.json": "8baf55bdf6f4d8e5e699c3e4eef065a4342a163ed91c07df6ff71c092229ac6e",
         "ui.js": "dd702c34a524edbb7800c93f6f7bdca28ba43f0d66bbbe9aca325d341d31f5de",
         "worker.js": "b4615fde64d0aa59ee72fef687b1ba16bb69da84daf84ba39566518339f16f6a"
       },
-      "requires": "WebSession streaming uploads and incremental responses. The current HTTP adapter buffers bounded bodies; it cannot reproduce this example\u2019s network streaming behavior."
+      "adaptation": "Uses standalone WebSession streaming uploads and incremental responses with backpressure. The roundtrip demonstration buffers its input in JavaScript before responding."
     }
   ],
   "additionalSources": {

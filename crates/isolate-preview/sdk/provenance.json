@@ -64,7 +64,7 @@
     "sandstorm/util.capnp": "69689d9a7c09e35222dc6c3271dc32e6a6c587ae97b3fd3ea8d0c833d554d99a",
     "capnp:/sandstorm/web-session.capnp": "72759c54c4b62de55b759abdabf3ec1e09445b11d6889ecb6becb13f4daa4b99",
     "sandstorm/web-session.capnp": "72759c54c4b62de55b759abdabf3ec1e09445b11d6889ecb6becb13f4daa4b99",
-    "sandstorm:api": "f4e78b4f20d44d95e685aa6e875e1e030a047b1a37a8a6ff5ee2027ca7c29462",
+    "sandstorm:api": "aea2fa3df68cc9e5507438aa33d2a6f00c3a3296989b7678a24757c84a81dbe0",
     "sandstorm-internal:validation": "e53a24514f98751399ee9cc0c1e77b545978bd60360801ebc1c54f2d029731d4",
     "sandstorm-internal:capnp-runtime": "d5c4251f407413c404727c5d86d6a063418d0312689ddd649f73e74be7f88fef",
     "sandstorm/api-session.capnp": "d123de92fda5e9f88f01788a973cf845a27d9440ebd3d9d0b72119f5e48df0fe",
@@ -74,6 +74,7 @@
     "Regenerate isolate-bridge.capnp with the additive SPKI getApplication method.",
     "Generate the wire-compatible ApiSession projection for Powerbox HTTP capabilities.",
     "Use resolved claim/restore capabilities and reject undeclared application permissions without a legacy HTTP API binding.",
-    "Resolve route-backed capabilities through the standalone native factory."
+    "Resolve route-backed capabilities through the standalone native factory.",
+    "Retain capability-fetch connections and response handles until streamed bodies finish or are canceled."
   ]
 }

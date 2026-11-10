@@ -200,6 +200,93 @@ impl Drop for Session {
 impl ui_session::Server for Session {}
 impl api_session::Server for Session {}
 impl web::Server for Session {
+    async fn post_streaming(
+        self: Rc<Self>,
+        params: web::PostStreamingParams,
+        mut results: web::PostStreamingResults,
+    ) -> capnp::Result<()> {
+        let p = params.get()?;
+        let path = p.get_path()?.to_str()?;
+        crate::routes::validate_path(path)?;
+        let decoded =
+            percent_encoding::percent_decode_str(path.trim_start_matches('/')).decode_utf8_lossy();
+        // Keep the bounded, permission-checked control plane on its existing path.
+        if (self.preview && self.api)
+            || decoded.starts_with("__spki")
+            || decoded.starts_with("__sandstorm")
+            || decoded.starts_with("capnp-es/")
+        {
+            return Err(capnp::Error::unimplemented(
+                "streaming is for application routes".into(),
+            ));
+        }
+        let mut headers = crate::http_adapter::request_headers(p.get_context()?)?;
+        crate::streaming::content_headers(
+            &mut headers,
+            p.get_mime_type()?.to_str()?,
+            p.get_encoding()?.to_str()?,
+        )?;
+        headers.extend(self.headers.iter().cloned());
+        let (revision, runtime) = self.controller.snapshot();
+        let stream = crate::streaming::upload(
+            &runtime,
+            crate::streaming::Request {
+                method: HttpMethod::Post,
+                path: path.into(),
+                headers,
+                revision: self.preview.then_some(revision),
+            },
+            p.get_expected_size(),
+            p.get_context()?.get_response_stream()?,
+        )
+        .await?;
+        results.get().set_stream(stream);
+        Ok(())
+    }
+    async fn put_streaming(
+        self: Rc<Self>,
+        params: web::PutStreamingParams,
+        mut results: web::PutStreamingResults,
+    ) -> capnp::Result<()> {
+        let p = params.get()?;
+        let path = p.get_path()?.to_str()?;
+        crate::routes::validate_path(path)?;
+        let decoded =
+            percent_encoding::percent_decode_str(path.trim_start_matches('/')).decode_utf8_lossy();
+        // Keep the bounded, permission-checked control plane on its existing path.
+        if (self.preview && self.api)
+            || decoded.starts_with("__spki")
+            || decoded.starts_with("__sandstorm")
+            || decoded.starts_with("capnp-es/")
+        {
+            return Err(capnp::Error::unimplemented(
+                "streaming is for application routes".into(),
+            ));
+        }
+        let mut headers = crate::http_adapter::request_headers(p.get_context()?)?;
+        crate::streaming::content_headers(
+            &mut headers,
+            p.get_mime_type()?.to_str()?,
+            p.get_encoding()?.to_str()?,
+        )?;
+        headers.extend(self.headers.iter().cloned());
+        let (revision, runtime) = self.controller.snapshot();
+        let stream = crate::streaming::upload(
+            &runtime,
+            crate::streaming::Request {
+                method: HttpMethod::Put,
+                path: path.into(),
+                headers,
+                revision: self.preview.then_some(revision),
+            },
+            p.get_expected_size(),
+            p.get_context()?.get_response_stream()?,
+        )
+        .await?;
+        results.get().set_stream(stream);
+        Ok(())
+    }
+
     async fn open_web_socket(
         self: Rc<Self>,
         params: web::OpenWebSocketParams,
@@ -261,7 +348,15 @@ impl web::Server for Session {
         } else {
             HttpMethod::Get
         };
-        self.respond(method, path, vec![], headers, results).await
+        self.respond(
+            method,
+            path,
+            vec![],
+            headers,
+            response_stream(params.get_context()?)?,
+            results,
+        )
+        .await
     }
     async fn post(
         self: Rc<Self>,
@@ -288,8 +383,15 @@ impl web::Server for Session {
                 content.get_encoding()?.to_str()?.to_owned(),
             ));
         }
-        self.respond(HttpMethod::Post, path, data.to_vec(), headers, results)
-            .await
+        self.respond(
+            HttpMethod::Post,
+            path,
+            data.to_vec(),
+            headers,
+            response_stream(params.get_context()?)?,
+            results,
+        )
+        .await
     }
     async fn put(
         self: Rc<Self>,
@@ -316,8 +418,15 @@ impl web::Server for Session {
                 content.get_encoding()?.to_str()?.to_owned(),
             ));
         }
-        self.respond(HttpMethod::Put, path, data.to_vec(), headers, results)
-            .await
+        self.respond(
+            HttpMethod::Put,
+            path,
+            data.to_vec(),
+            headers,
+            response_stream(params.get_context()?)?,
+            results,
+        )
+        .await
     }
     async fn patch(
         self: Rc<Self>,
@@ -344,8 +453,15 @@ impl web::Server for Session {
                 content.get_encoding()?.to_str()?.to_owned(),
             ));
         }
-        self.respond(HttpMethod::Patch, path, data.to_vec(), headers, results)
-            .await
+        self.respond(
+            HttpMethod::Patch,
+            path,
+            data.to_vec(),
+            headers,
+            response_stream(params.get_context()?)?,
+            results,
+        )
+        .await
     }
     async fn delete(
         self: Rc<Self>,
@@ -355,8 +471,15 @@ impl web::Server for Session {
         let params = params.get()?;
         let path = params.get_path()?.to_str()?.to_owned();
         let headers = crate::http_adapter::request_headers(params.get_context()?)?;
-        self.respond(HttpMethod::Delete, path, vec![], headers, results)
-            .await
+        self.respond(
+            HttpMethod::Delete,
+            path,
+            vec![],
+            headers,
+            response_stream(params.get_context()?)?,
+            results,
+        )
+        .await
     }
 }
 fn reply(mut results: web::GetResults, status: u16, mime: &str, bytes: &[u8]) -> capnp::Result<()> {
@@ -376,8 +499,10 @@ impl Session {
         path: String,
         body: Vec<u8>,
         mut headers: Vec<(String, String)>,
+        stream: Option<isolate_protocol::util_capnp::byte_stream::Client>,
         mut results: web::GetResults,
     ) -> capnp::Result<()> {
+        crate::routes::validate_path(&path)?;
         let normalized = path.trim_start_matches('/');
         let route = normalized.split('?').next().unwrap_or(normalized);
         if self.preview && !self.api && method == HttpMethod::Get {
@@ -499,6 +624,21 @@ impl Session {
         }
         headers.extend(self.headers.iter().cloned());
         let (revision, runtime) = self.controller.snapshot();
+        if let Some(stream) = stream {
+            return crate::streaming::fetch(
+                &runtime,
+                crate::streaming::Request {
+                    method,
+                    path,
+                    headers,
+                    revision: self.preview.then_some(revision),
+                },
+                &body,
+                stream,
+                results,
+            )
+            .await;
+        }
         let response = tokio::time::timeout(
             std::time::Duration::from_secs(20),
             runtime.fetch_with_headers(method, &path, &body, &headers),
@@ -526,5 +666,15 @@ impl Session {
             Ok(Err(e)) => reply(results, 500, "text/plain", e.to_string().as_bytes()),
             Err(_) => reply(results, 500, "text/plain", b"worker request timed out"),
         }
+    }
+}
+
+pub(crate) fn response_stream(
+    context: web::context::Reader<'_>,
+) -> capnp::Result<Option<isolate_protocol::util_capnp::byte_stream::Client>> {
+    if context.has_response_stream() {
+        Ok(Some(context.get_response_stream()?))
+    } else {
+        Ok(None)
     }
 }
