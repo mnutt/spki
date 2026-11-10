@@ -15,6 +15,18 @@ struct Project {
   # Public directories merged at /. Matching files take precedence over worker fetch.
   # Hidden files, symlinks, duplicate/reserved URLs and files over 1 MiB are rejected.
   assets @8 :List(Text);
+  # Custom env bindings. Data files are project-relative and included in the artifact.
+  # Runtime storage/RPC names are reserved. Service currently supports only "main".
+  bindings @10 :List(Binding);
+  struct Binding {
+    name @0 :Text;
+    union {
+      text @1 :Text;
+      json @2 :Text;
+      dataFile @3 :Text;
+      service @4 :Text;
+    }
+  }
   struct Ui { entrypoints @0 :List(Text); }
   struct Worker { entrypoint @0 :Text; }
   struct Runtime { release @0 :Text; hostSha256 @1 :Text; }

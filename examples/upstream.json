@@ -114,14 +114,15 @@
     },
     {
       "upstream": "isolate-service-binding",
-      "path": "pending/service-binding",
-      "status": "pending",
+      "path": "service-binding",
+      "status": "runnable",
       "upstreamSha256": {
         "README.md": "74a5599c71331b1d2916c88d156812e023a3b160d6d4485fc893cf1a3215d323",
         "payload.bin": "b04b13d22b146e2abb83f1e1674c9a97040514c8a2f829342ddf57d8b547279d",
         "worker.js": "902df454503a27a6c267217b78c8004ebc002a87cdf145b420af28a9301a83b2"
       },
-      "requires": "Project declarations and runtime wiring for custom text, JSON, data, and service bindings."
+      "requires": "Project declarations and runtime wiring for custom text, JSON, data, and service bindings.",
+      "adaptation": "Declares native text, JSON, dataFile, and main-loopback bindings in standalone project configuration; no Sandstorm source dependency."
     },
     {
       "upstream": "isolate-streaming",

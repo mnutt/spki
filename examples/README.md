@@ -9,6 +9,7 @@ build or run them. Upstream signing keys and generated worker bundles are omitte
 | Example | What it demonstrates |
 | --- | --- |
 | [hello](hello/) | Request metadata and runtime bindings |
+| [service-binding](service-binding/) | Native text, JSON, binary data, and loopback service bindings |
 | [storage-counter](storage-counter/) | Persistent key/value storage, JSON and text imports |
 | [app-skeleton](app-skeleton/) | HTTP routes, session identity, validation, and storage |
 | [counter](counter/) | Direct application bootstrap and bidirectional browser callbacks |
@@ -50,8 +51,9 @@ npm run typecheck --prefix examples/typescript
 Preview currently exposes no application-specific permission roles. Shared
 sessions can use the same app operations; Preview's deployment permission is not
 an application permission. The counter example is intentionally in-memory;
-`storage-counter` and `typescript` persist their values. None of these examples
-claims to persist exported capabilities across restarts.
+`storage-counter` and `typescript` persist their values. `capability-provider`
+persists runtime-owned routes across restarts; JS-exported objects in the counter
+and RPC examples remain live capabilities.
 
 `api-powerbox` demonstrates durable imported HTTP grants: save, restore after
 a grain restart, and drop the saved reference. Its tokens stay server-side.
@@ -63,11 +65,10 @@ configuration. These need runtime work before they can be ported faithfully:
 
 | Example | Missing support |
 | --- | --- |
-| [service-binding](pending/service-binding/) | Custom text, JSON, data, and service binding declarations |
 | [streaming](pending/streaming/) | Streaming WebSession uploads and incremental HTTP responses |
 
 The runnable object store implements a read-only `WebSession` directly in JS.
-It does not exercise the pending route-backed factory or durable capability tokens.
+It does not exercise the route-backed factory or durable capability tokens.
 The runtime's HTTP adapter currently buffers bounded bodies, so the upstream
 streaming demo is not advertised as runnable.
 
@@ -75,6 +76,8 @@ streaming demo is not advertised as runnable.
 
 ```sh
 python3 scripts/check-examples.py
+# Build/verify a bindings SPK, without uploading:
+python3 scripts/check-bindings.py
 # Against the dedicated SPKI test VM with `spktool dev` running:
 node scripts/check-examples-gateway.cjs /path/to/playwright
 node scripts/check-powerbox-gateway.cjs /path/to/playwright

@@ -28,6 +28,8 @@ function request(webkey, route) {
   const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config'),SPKI_ESBUILD:path.join(root,'build/tools/esbuild')};
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',args:['--host-resolver-rules=MAP *.local.sandstorm.io 127.0.0.1, MAP local.sandstorm.io 127.0.0.1','--no-proxy-server']});
   const context = await browser.newContext();
+  // These checks navigate explicitly; automatic reload can destroy evaluate() mid-assertion.
+  await context.route('**/__spki/v1/reload.js', route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
   const page = await context.newPage();page.setDefaultTimeout(60000);
   page.on('pageerror', error=>console.error('browser error:',redact(String(error))));
   let grainId;
@@ -96,7 +98,7 @@ function request(webkey, route) {
     cli(['--profile','viewer','auth','--webkey-stdin','--allow-local-http'],viewer,false);
 
     if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); }
-    const names=['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http','capability-provider'];
+    const names=process.env.SPKI_EXAMPLES?.split(',') || ['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http','capability-provider','service-binding'];
     for(const name of names) {
       progress(`checking example ${name}`);
       const projectDir=path.join(directory,name);
@@ -139,7 +141,70 @@ function request(webkey, route) {
           return response.json();
         },{route,post});
       }
-      if(name==='capability-provider') {
+      if(name==='service-binding') {
+        const before=await json('/json');
+        assert.equal(before.textBinding,'Hello from a binding');
+        assert.deepEqual(before.jsonBinding,{enabled:true,count:3});
+        const original=fs.readFileSync(path.join(projectDir,'payload.bin'));
+        assert.equal(before.dataBinding.bytes,original.length);
+        assert.equal(before.dataBinding.checksum,[...original].reduce((a,b)=>a+b,0));
+        assert.equal(before.body.route,'/target');
+        assert.equal(before.body.method,'POST');
+        assert.equal(before.body.header,'present');
+        assert.equal(before.body.body,'hello from the caller route');
+        let logs='';
+        const watching=spawn(path.join(root,'target/debug/spki'),['--project',projectDir,'dev'],{env,stdio:['ignore','pipe','pipe']});
+        watching.stdout.on('data',b=>logs+=b);watching.stderr.on('data',b=>logs+=b);
+        try {
+          // Wait for the watcher to finish its first deployment before editing a non-source file.
+          for(let i=0;i<120 && !logs.includes('Live revision');i++) {
+            assert.equal(watching.exitCode,null,redact(logs));
+            await page.waitForTimeout(100);
+          }
+          assert(logs.includes('Live revision'),redact(logs));
+          fs.writeFileSync(path.join(projectDir,'payload.bin'),Buffer.from([0,255,1]));
+          for(let i=0;i<120;i++) {
+            if((await json('/json')).dataBinding.checksum===256) break;
+            assert.equal(watching.exitCode,null,redact(logs));
+            await page.waitForTimeout(100);
+          }
+          assert.equal((await json('/json')).dataBinding.checksum,256,redact(logs));
+          const config=path.join(projectDir,'sandstorm-pkgdef.capnp');
+          fs.writeFileSync(config,fs.readFileSync(config,'utf8').replace('Hello from a binding','Updated binding'));
+          for(let i=0;i<120;i++) {
+            if((await json('/json')).textBinding==='Updated binding') break;
+            assert.equal(watching.exitCode,null,redact(logs));
+            await page.waitForTimeout(100);
+          }
+          assert.equal((await json('/json')).textBinding,'Updated binding',redact(logs));
+          fs.unlinkSync(path.join(projectDir,'payload.bin'));
+          for(let i=0;i<120 && !logs.includes('Deployment failed');i++) await page.waitForTimeout(100);
+          assert(logs.includes('Deployment failed'),redact(logs));
+          assert.equal((await json('/json')).dataBinding.checksum,256,'failed build changed selected bindings');
+          fs.writeFileSync(path.join(projectDir,'payload.bin'),Buffer.from([7,8]));
+          for(let i=0;i<120;i++) {
+            if((await json('/json')).dataBinding.checksum===15) break;
+            await page.waitForTimeout(100);
+          }
+          assert.equal((await json('/json')).dataBinding.checksum,15,redact(logs));
+          console.log('PASS: binding edits redeploy; missing data file preserves the deployment and recreating it recovers');
+        } finally {
+          watching.kill('SIGTERM');
+          await new Promise(resolve=>watching.exitCode!==null?resolve():watching.once('exit',resolve));
+        }
+        await call('shutdownGrain',grainId);
+        let ready=false;
+        for(let attempt=0;attempt<40;attempt++) {
+          try { ready=(await request(developer,'/__spki/v1/info')).status===200; } catch {}
+          if(ready) break;
+          await page.waitForTimeout(250);
+        }
+        assert(ready,'Preview did not recover');
+        await page.reload();frame=await appFrame();
+        const restored=await json('/json');
+        assert.equal(restored.textBinding,'Updated binding');
+        assert.deepEqual(restored.dataBinding,{bytes:2,checksum:15});
+      } else if(name==='capability-provider') {
         for(const kind of ['web-session','api-session']) {
           const result=await json('/api/export-'+kind,true);
           assert(result.ok && result.saved);

@@ -143,7 +143,7 @@ pub(crate) fn run(
     let mut expected = revision(&info.revision)?;
     let mut watch = Watch {
         roots: BTreeSet::new(),
-        inputs: BTreeSet::new(),
+        inputs: settings.binding_paths()?.into_iter().collect(),
         assets: settings.assets.clone(),
     };
     if let Some(config) = config {
@@ -173,6 +173,7 @@ pub(crate) fn run(
             if refresh_config {
                 config_valid = false;
                 settings = project::resolve(config, entry, esbuild, profile)?;
+                watch.inputs.extend(settings.binding_paths()?);
                 config_valid = true;
             }
             ensure!(

@@ -10,6 +10,11 @@ use std::{
 
 impl Compiler {
     pub fn build_project(&self, settings: &Settings, limit: usize) -> Result<String> {
+        let worker = self.build_application(settings, limit)?;
+        let bindings = settings.bindings(&mut self.inputs.borrow_mut())?;
+        isolate_preview::bindings::attach(worker, &bindings, limit)
+    }
+    fn build_application(&self, settings: &Settings, limit: usize) -> Result<String> {
         let generated = tempfile::tempdir()?;
         let schemas = crate::schemas::compile(settings, generated.path())?;
         self.schemas.borrow_mut().clear();

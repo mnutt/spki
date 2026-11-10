@@ -25,6 +25,8 @@ struct Project {
     assets: Vec<String>,
     #[serde(default)]
     schemas: Vec<String>,
+    #[serde(default)]
+    bindings: Vec<Binding>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,8 +56,23 @@ struct Ui {
     #[serde(default)]
     entrypoints: Vec<String>,
 }
+#[derive(Clone, Deserialize)]
+struct Binding {
+    name: String,
+    #[serde(flatten)]
+    value: BindingValue,
+}
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum BindingValue {
+    Text(String),
+    Json(String),
+    DataFile(String),
+    Service(String),
+}
 #[derive(Clone)]
 pub struct Settings {
+    bindings: Vec<Binding>,
     pub entry: PathBuf,
     pub root: PathBuf,
     pub ui: Vec<PathBuf>,
@@ -191,6 +208,7 @@ pub fn read(file: &Path) -> Result<Settings> {
         Ok(root.join(path))
     };
     Ok(Settings {
+        bindings: project.bindings,
         root: root.to_owned(),
         schemas: project
             .schemas
@@ -223,6 +241,7 @@ pub fn resolve(
         read(file)?
     } else {
         Settings {
+            bindings: Vec::new(),
             root: std::env::current_dir()?,
             ui: Vec::new(),
             assets: Vec::new(),
@@ -386,4 +405,80 @@ pub fn package_metadata(file: &Path) -> Result<(Value, Vec<u8>)> {
         String::from_utf8_lossy(&output.stderr)
     );
     Ok((pkg, output.stdout))
+}
+
+impl Settings {
+    fn binding_path(&self, value: &str) -> Result<PathBuf> {
+        let path = Path::new(value);
+        ensure!(
+            !value.is_empty()
+                && path
+                    .components()
+                    .all(|p| matches!(p, std::path::Component::Normal(_))),
+            "binding dataFile must be project-relative without dot segments"
+        );
+        Ok(self.root.join(path))
+    }
+    pub fn binding_paths(&self) -> Result<Vec<PathBuf>> {
+        self.bindings
+            .iter()
+            .filter_map(|binding| match &binding.value {
+                BindingValue::DataFile(path) => Some(self.binding_path(path)),
+                _ => None,
+            })
+            .collect()
+    }
+    pub fn bindings(
+        &self,
+        inputs: &mut std::collections::BTreeSet<PathBuf>,
+    ) -> Result<Vec<isolate_preview::bindings::Binding>> {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        use isolate_preview::bindings::{Binding as Native, Value};
+        let mut output = Vec::new();
+        ensure!(
+            self.bindings.len() <= 64,
+            "at most 64 custom bindings are allowed"
+        );
+        for binding in &self.bindings {
+            let value = match &binding.value {
+                BindingValue::Text(value) => Value::Text(value.clone()),
+                BindingValue::Json(value) => Value::Json(value.clone()),
+                BindingValue::Service(value) => Value::Service(value.clone()),
+                BindingValue::DataFile(value) => {
+                    inputs.insert(self.binding_path(value)?);
+                    let path = Path::new(value);
+                    let mut file = self.root.clone();
+                    for component in path.components() {
+                        file.push(component);
+                        ensure!(
+                            !fs::symlink_metadata(&file)?.file_type().is_symlink(),
+                            "binding dataFile cannot use symlinks"
+                        );
+                    }
+                    let metadata = fs::metadata(&file)?;
+                    ensure!(
+                        metadata.is_file()
+                            && metadata.len() <= isolate_preview::bindings::MAX_VALUE as u64,
+                        "binding dataFile must be a regular file no larger than 1 MiB"
+                    );
+                    use std::io::Read;
+                    let mut data = Vec::new();
+                    fs::File::open(file)?
+                        .take(isolate_preview::bindings::MAX_VALUE as u64 + 1)
+                        .read_to_end(&mut data)?;
+                    ensure!(
+                        data.len() <= isolate_preview::bindings::MAX_VALUE,
+                        "binding dataFile exceeds 1 MiB"
+                    );
+                    Value::Data(STANDARD.encode(data))
+                }
+            };
+            output.push(Native {
+                name: binding.name.clone(),
+                value,
+            });
+        }
+        isolate_preview::bindings::validate(&output)?;
+        Ok(output)
+    }
 }

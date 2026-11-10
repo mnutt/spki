@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+pub mod bindings;
 pub mod bridge;
 pub mod browser;
 pub mod controller;
@@ -53,7 +54,18 @@ pub fn bundle(js: &[u8]) -> Result<Vec<u8>> {
         .reborrow()
         .init_compatibility_flags(1)
         .set(0, "nodejs_als");
-    let mut bindings = source.reborrow().init_bindings(2);
+    let custom = bindings::read(text)?;
+    let mut bindings = source.reborrow().init_bindings((custom.len() + 2) as u32);
+    for (index, value) in custom.iter().enumerate() {
+        let mut binding = bindings.reborrow().get(index as u32 + 2);
+        binding.set_name(&value.name);
+        match &value.value {
+            bindings::Value::Text(_) => binding.set_text(&value.bytes()?),
+            bindings::Value::Json(_) => binding.set_json(&value.bytes()?),
+            bindings::Value::Data(_) => binding.set_data(&value.bytes()?),
+            bindings::Value::Service(target) => binding.set_service(target),
+        }
+    }
     let mut binding = bindings.reborrow().get(1);
     binding.set_name("__SANDSTORM_NATIVE_CAPNP");
     binding.set_capnp("sandstorm");

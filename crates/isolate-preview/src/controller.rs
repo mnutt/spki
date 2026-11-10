@@ -31,6 +31,7 @@ pub fn revision(source: &[u8]) -> String {
     for data in [
         crate::HOST_SHA256.as_bytes(),
         b"2026-06-10",
+        b"spki-native-bindings-v1",
         include_bytes!("../sdk/modules.json"),
         include_bytes!("../sdk/entry.js"),
         include_bytes!("../browser/client.js"),
