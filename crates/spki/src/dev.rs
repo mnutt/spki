@@ -158,7 +158,7 @@ pub(crate) fn run(
             .to_owned(),
     );
     let mut previous: Option<Snapshot> = None;
-    let mut observed = String::new();
+    let mut deployed = String::new();
     let mut config_valid = true;
     loop {
         let before = watch.snapshot()?;
@@ -202,9 +202,10 @@ pub(crate) fn run(
                     return Ok(());
                 }
             }
-            if code != observed {
-                observed = code.clone();
+            if code != deployed {
                 deploy(&api, &code, &mut expected)?;
+                // Only confirmed output is safe to skip after the next edit.
+                deployed = code;
             }
             Ok(())
         })();
