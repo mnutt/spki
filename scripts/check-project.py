@@ -68,6 +68,11 @@ with tempfile.TemporaryDirectory() as temp:
     config.write_text(original)
     # Explicit entrypoints continue to work without project config.
     run('build','--entry',str(project/'src/worker.ts'),'--output',str(base/'explicit.js'))
+    # Credential operations remain usable while build compatibility needs repair.
+    config.write_text(original.replace('formatVersion = 1', 'formatVersion = 99'))
+    assert 'no readable credential' in run('auth', 'status', cwd=project, ok=False).stderr
+    run('logout', cwd=project)
+    config.write_text(original)
     # The embedded compiler ignores obsolete external tool environment settings.
     env['SPKI_ESBUILD']='/does/not/exist'
     env['CAPNP']='/does/not/exist'

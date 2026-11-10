@@ -103,16 +103,37 @@ pub fn discover(explicit: Option<&Path>) -> Result<Option<PathBuf>> {
     }
     Ok(None)
 }
-pub fn read(file: &Path) -> Result<Settings> {
+fn configuration(file: &Path) -> Result<crate::capnp_compiler::Configuration> {
     let imports = tempfile::tempdir()?;
     for (name, source) in SCHEMAS {
         let path = imports.path().join(name);
         fs::create_dir_all(path.parent().unwrap())?;
         fs::write(path, source)?;
     }
-    let config = crate::capnp_compiler::Configuration::read(file, imports.path())?;
-    let project: Project = serde_json::from_value(config.project()?)
-        .context("invalid spki project fields")?;
+    crate::capnp_compiler::Configuration::read(file, imports.path())
+}
+
+pub struct LoadedProject {
+    pub settings: Settings,
+    pub package: Value,
+    pub manifest: Vec<u8>,
+}
+pub fn read(file: &Path) -> Result<Settings> {
+    Ok(load(file)?.settings)
+}
+// Credentials need only the selected profile, not a valid worker or runtime pin.
+pub fn profile(file: &Path) -> Result<String> {
+    let project = configuration(file)?.project()?;
+    let profile = project["preview"]["profile"]
+        .as_str()
+        .context("missing preview profile")?;
+    spki_common::validate_id(profile)?;
+    Ok(profile.to_owned())
+}
+pub fn load(file: &Path) -> Result<LoadedProject> {
+    let config = configuration(file)?;
+    let project: Project =
+        serde_json::from_value(config.project()?).context("invalid spki project fields")?;
     ensure!(
         project.format_version == 1,
         "unsupported spki formatVersion"
@@ -130,7 +151,7 @@ pub fn read(file: &Path) -> Result<Settings> {
         project.compiler.name == "rolldown" && project.compiler.version == crate::compiler::VERSION,
         "project compiler differs from this CLI; use compiler = (name = \"rolldown\", version = \"1.3.1\")"
     );
-    super::store_path(&project.preview.profile)?;
+    spki_common::validate_id(&project.preview.profile)?;
     if !project.preview.project.is_empty() {
         spki_common::validate_id(&project.preview.project)?;
     }
@@ -181,7 +202,7 @@ pub fn read(file: &Path) -> Result<Settings> {
         );
         Ok(root.join(path))
     };
-    Ok(Settings {
+    let settings = Settings {
         bindings: project.bindings,
         root: root.to_owned(),
         schemas: project
@@ -203,6 +224,11 @@ pub fn read(file: &Path) -> Result<Settings> {
         entry: root.join(entry),
         profile: project.preview.profile,
         project: project.preview.project,
+    };
+    Ok(LoadedProject {
+        settings,
+        package: pkg,
+        manifest: config.manifest()?,
     })
 }
 pub fn resolve(
@@ -358,19 +384,6 @@ fn publish_into(source: &Path, target: &Path) -> Result<()> {
         }
     }
     result.context("could not populate existing project directory")
-}
-
-// Native packing preserves all original manifest fields, then supplies only generated commands.
-pub fn package_metadata(file: &Path) -> Result<(Value, Vec<u8>)> {
-    read(file)?;
-    let imports = tempfile::tempdir()?;
-    for (name, source) in SCHEMAS {
-        let path = imports.path().join(name);
-        fs::create_dir_all(path.parent().unwrap())?;
-        fs::write(path, source)?;
-    }
-    let config = crate::capnp_compiler::Configuration::read(file, imports.path())?;
-    Ok((config.package()?, config.manifest()?))
 }
 
 impl Settings {

@@ -118,8 +118,10 @@ fn run() -> Result<()> {
     let config = project::discover(args.project.as_deref())?;
     let profile = if let Some(profile) = &args.profile {
         profile.clone()
-    } else if let Some(file) = &config {
-        project::read(file)?.profile
+    } else if matches!(args.command, Command::Auth { .. } | Command::Logout)
+        && let Some(file) = &config
+    {
+        project::profile(file)?
     } else {
         "default".into()
     };

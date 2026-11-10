@@ -35,8 +35,11 @@ pub fn pack(file: &Path, options: Options) -> Result<()> {
         !options.output.exists(),
         "output already exists; choose a fresh release filename"
     );
-    let settings = project::resolve(Some(file), None, None)?;
-    let (metadata, bytes) = project::package_metadata(file)?;
+    let project::LoadedProject {
+        settings,
+        package: metadata,
+        manifest: bytes,
+    } = project::load(file)?;
     let configured = metadata["id"].as_str().filter(|id| !id.is_empty());
     if let (Some(configured), Some(requested)) = (configured, options.app_id.as_deref()) {
         ensure!(configured == requested, "--app-id conflicts with pkgdef.id");
