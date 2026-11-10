@@ -199,7 +199,9 @@ fn run() -> Result<()> {
         Command::Build { entry, output } => {
             let settings =
                 project::resolve(config.as_deref(), entry.as_deref(), args.profile.as_deref())?;
-            let code = compiler::Compiler::new()?.build_project(&settings, 8 * 1024 * 1024)?;
+            let code = compiler::Compiler::new()?
+                .build_project(&settings, 8 * 1024 * 1024)?
+                .code;
             let output = match output {
                 Some(output) => {
                     ensure!(

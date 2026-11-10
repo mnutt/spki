@@ -45,7 +45,9 @@ pub fn pack(file: &Path, options: Options) -> Result<()> {
         "set pkgdef.id or --app-id; create a new signing identity explicitly with spki keygen",
     )?;
     let key = spk::identity(&options.keyring, id)?;
-    let code = Compiler::new()?.build_project(&settings, 8 * 1024 * 1024)?;
+    let code = Compiler::new()?
+        .build_project(&settings, 8 * 1024 * 1024)?
+        .code;
     let mut input = bytes.as_slice();
     let reader = serialize::read_message_from_flat_slice(
         &mut input,

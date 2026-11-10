@@ -171,6 +171,7 @@ pub(crate) fn run(
                 .as_ref()
                 .is_some_and(|old| config_changed(old, &before));
         let mut unstable = false;
+        let mut build_inputs = BTreeSet::new();
         let result = (|| -> Result<()> {
             if refresh_config {
                 config_valid = false;
@@ -189,7 +190,9 @@ pub(crate) fn run(
                     .to_owned(),
             );
             watch.assets = settings.assets.clone();
-            let code = compiler.build_project(&settings, limit)?;
+            let build = compiler.build_project(&settings, limit)?;
+            build_inputs = build.inputs;
+            let code = build.code;
             if !once {
                 std::thread::sleep(Duration::from_millis(200));
                 if watch.snapshot()? != before {
@@ -197,7 +200,9 @@ pub(crate) fn run(
                     return Ok(());
                 }
                 // A second build covers edits to dependencies first discovered by this build.
-                if compiler.build_project(&settings, limit)? != code {
+                let verified = compiler.build_project(&settings, limit)?;
+                build_inputs.extend(verified.inputs);
+                if verified.code != code {
                     unstable = true;
                     return Ok(());
                 }
@@ -213,7 +218,7 @@ pub(crate) fn run(
         let stable = watch.snapshot()? == before;
         previous = if unstable { None } else { Some(before) };
         if stable && !unstable {
-            watch.inputs.extend(compiler.inputs());
+            watch.inputs.extend(build_inputs);
             previous = Some(watch.snapshot()?);
         }
         if let Err(error) = result {

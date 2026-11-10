@@ -12,7 +12,6 @@ use rolldown_common::{Output, ResolvedExternal, side_effects::HookSideEffects};
 use serde_json::Value;
 use std::{
     borrow::Cow,
-    cell::RefCell,
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
@@ -22,11 +21,20 @@ use std::{
 type Assets = BTreeMap<String, Vec<u8>>;
 type Styles = BTreeMap<String, Vec<PathBuf>>;
 
+pub struct BuildResult {
+    pub code: String,
+    pub inputs: BTreeSet<PathBuf>,
+}
+struct BundleResult {
+    output: Vec<Output>,
+    assets: Assets,
+    styles: Styles,
+    inputs: BTreeSet<PathBuf>,
+}
+
 pub const VERSION: &str = "1.3.1";
 pub struct Compiler {
     pub(crate) modules: BTreeSet<String>,
-    pub(crate) schemas: RefCell<BTreeMap<String, PathBuf>>,
-    pub(crate) inputs: RefCell<BTreeSet<PathBuf>>,
     runtime: tokio::runtime::Runtime,
 }
 
@@ -115,8 +123,7 @@ fn emit_asset(path: &Path, assets: &mut BTreeMap<String, Vec<u8>>) -> Result<Str
 }
 impl Compiler {
     pub fn new() -> Result<Self> {
-        let sdk: Value =
-            serde_json::from_str(spki_common::SDK_MODULES_JSON)?;
+        let sdk: Value = serde_json::from_str(spki_common::SDK_MODULES_JSON)?;
         Ok(Self {
             modules: sdk
                 .as_object()
@@ -124,22 +131,18 @@ impl Compiler {
                 .keys()
                 .cloned()
                 .collect(),
-            schemas: Default::default(),
-            inputs: Default::default(),
             runtime: tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
                 .build()?,
         })
-    }
-    pub fn inputs(&self) -> BTreeSet<PathBuf> {
-        self.inputs.borrow().clone()
     }
     fn bundle(
         &self,
         entries: &[PathBuf],
         cwd: &Path,
         browser: bool,
-    ) -> Result<(Vec<Output>, Assets, Styles)> {
+        schemas: &BTreeMap<String, PathBuf>,
+    ) -> Result<BundleResult> {
         let mut aliases = BTreeMap::new();
         let prefix = if browser { "/" } else { "" };
         aliases.insert(
@@ -154,7 +157,7 @@ impl Compiler {
                 );
             }
         }
-        for (name, path) in self.schemas.borrow().iter() {
+        for (name, path) in schemas.iter() {
             aliases.insert(
                 name.clone(),
                 if browser {
@@ -231,7 +234,7 @@ impl Compiler {
             })),
             ..Default::default()
         };
-        let (result, styles) = self.runtime.block_on(async {
+        let (result, styles, inputs) = self.runtime.block_on(async {
             let mut bundler =
                 Bundler::with_plugins(options, vec![RuntimePlugin::new_shared(plugin)])
                     .map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -259,7 +262,6 @@ impl Compiler {
                     .map(|info| PathBuf::from(info.key().as_str()))
                     .filter(|p| p.is_file()),
             );
-            *self.inputs.borrow_mut() = inputs;
             let mut styles = BTreeMap::new();
             for item in &result.assets {
                 if let Output::Chunk(chunk) = item {
@@ -299,15 +301,33 @@ impl Compiler {
                     }
                 }
             }
-            Ok::<_, anyhow::Error>((result.assets, styles))
+            Ok::<_, anyhow::Error>((result.assets, styles, inputs))
         })?;
         let emitted = assets.lock().unwrap().clone();
-        Ok((result, emitted, styles))
+        Ok(BundleResult {
+            output: result,
+            assets: emitted,
+            styles,
+            inputs,
+        })
     }
-    pub fn build(&self, entry: &Path, limit: usize) -> Result<String> {
+    #[cfg(test)]
+    pub fn build(&self, entry: &Path, limit: usize) -> Result<BuildResult> {
+        self.build_worker(entry, limit, &BTreeMap::new())
+    }
+    pub(crate) fn build_worker(
+        &self,
+        entry: &Path,
+        limit: usize,
+        schemas: &BTreeMap<String, PathBuf>,
+    ) -> Result<BuildResult> {
         let entry = fs::canonicalize(entry).context("cannot read worker entrypoint")?;
-        let (output, _, _) =
-            self.bundle(std::slice::from_ref(&entry), entry.parent().unwrap(), false)?;
+        let BundleResult { output, inputs, .. } = self.bundle(
+            std::slice::from_ref(&entry),
+            entry.parent().unwrap(),
+            false,
+            schemas,
+        )?;
         ensure!(
             output.len() == 1,
             "worker must compile to one ES module; separate CSS/assets are not supported yet"
@@ -323,15 +343,24 @@ impl Compiler {
         }
         validate_worker(&chunk.code)?;
         ensure!(chunk.code.len() <= limit, "source exceeds Preview limit");
-        Ok(chunk.code.clone())
+        Ok(BuildResult {
+            code: chunk.code.clone(),
+            inputs,
+        })
     }
     pub(crate) fn build_browser(
         &self,
         entries: &[PathBuf],
         cwd: &Path,
         output: &Path,
-    ) -> Result<()> {
-        let (chunks, mut assets, styles) = self.bundle(entries, cwd, true)?;
+        schemas: &BTreeMap<String, PathBuf>,
+    ) -> Result<BTreeSet<PathBuf>> {
+        let BundleResult {
+            output: chunks,
+            mut assets,
+            styles,
+            mut inputs,
+        } = self.bundle(entries, cwd, true, schemas)?;
         for item in &chunks {
             let path = output.join(item.filename());
             fs::create_dir_all(path.parent().unwrap())?;
@@ -342,7 +371,7 @@ impl Compiler {
                     .get(chunk.filename.as_str())
                     .filter(|paths| !paths.is_empty())
                 {
-                    css = self.compile_css(paths, &mut assets)?;
+                    css = self.compile_css(paths, &mut assets, &mut inputs)?;
                 }
                 if !css.is_empty() {
                     fs::write(
@@ -357,12 +386,13 @@ impl Compiler {
             fs::create_dir_all(path.parent().unwrap())?;
             fs::write(path, bytes)?;
         }
-        Ok(())
+        Ok(inputs)
     }
     fn compile_css(
         &self,
         paths: &[PathBuf],
         assets: &mut BTreeMap<String, Vec<u8>>,
+        inputs: &mut BTreeSet<PathBuf>,
     ) -> Result<String> {
         use lightningcss::{
             bundler::{Bundler as CssBundler, FileProvider},
@@ -388,7 +418,7 @@ impl Compiler {
         let sheet = bundler
             .bundle(&entry)
             .map_err(|e| anyhow::anyhow!("CSS bundle failed: {e}"))?;
-        self.inputs.borrow_mut().extend(
+        inputs.extend(
             sheet
                 .sources
                 .iter()
@@ -415,7 +445,7 @@ impl Compiler {
                     .map(|i| (&url[..i], &url[i..]))
                     .unwrap_or((&url, ""));
                 let asset = Path::new(&location.file_path).parent().unwrap().join(file);
-                self.inputs.borrow_mut().insert(asset.clone());
+                inputs.insert(asset.clone());
                 format!("{}{suffix}", emit_asset(&asset, assets)?)
             };
             code = code.replace(&placeholder, &replacement);
@@ -474,8 +504,8 @@ mod tests {
         let worker = root.join("worker.ts");
         fs::write(&worker, "export {value} from '../helper';").unwrap();
         let compiler = Compiler::new().unwrap();
-        compiler.build(&worker, 8192).unwrap();
-        assert!(compiler.inputs().contains(&helper));
+        let worker_build = compiler.build(&worker, 8192).unwrap();
+        assert!(worker_build.inputs.contains(&helper));
         let entry = root.join("main.ts");
         fs::write(&entry, "import './style.css'; console.log('loaded');").unwrap();
         fs::write(root.join("style.css"), "@import '../shared.css';").unwrap();
@@ -483,10 +513,17 @@ mod tests {
         let image = temp.path().join("logo.svg");
         fs::write(&shared, "body { background: url('./logo.svg'); }").unwrap();
         fs::write(&image, "<svg/>").unwrap();
-        compiler
-            .build_browser(&[entry], &root, &root.join("out"))
+        let inputs = compiler
+            .build_browser(&[entry], &root, &root.join("out"), &BTreeMap::new())
             .unwrap();
-        let inputs = compiler.inputs();
+        assert!(
+            worker_build.inputs.contains(&helper),
+            "browser build must not overwrite worker inputs"
+        );
+        assert!(
+            !inputs.contains(&helper),
+            "browser inputs must not contain prior worker inputs"
+        );
         // CSS imports may retain .. segments, so compare canonical paths.
         let inputs: BTreeSet<_> = inputs
             .iter()

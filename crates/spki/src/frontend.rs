@@ -1,5 +1,8 @@
 //! Browser builds and public files become part of the same immutable deployment as the worker.
-use crate::{compiler::Compiler, project::Settings};
+use crate::{
+    compiler::{BuildResult, Compiler},
+    project::Settings,
+};
 use anyhow::{Context, Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::{
@@ -9,15 +12,16 @@ use std::{
 };
 
 impl Compiler {
-    pub fn build_project(&self, settings: &Settings, limit: usize) -> Result<String> {
-        let worker = self.build_application(settings, limit)?;
-        let bindings = settings.bindings(&mut self.inputs.borrow_mut())?;
-        spki_common::bindings::attach(worker, &bindings, limit)
+    pub fn build_project(&self, settings: &Settings, limit: usize) -> Result<BuildResult> {
+        let mut result = self.build_application(settings, limit)?;
+        let bindings = settings.bindings(&mut result.inputs)?;
+        result.code = spki_common::bindings::attach(result.code, &bindings, limit)?;
+        Ok(result)
     }
-    fn build_application(&self, settings: &Settings, limit: usize) -> Result<String> {
+    fn build_application(&self, settings: &Settings, limit: usize) -> Result<BuildResult> {
         let generated = tempfile::tempdir()?;
         let schemas = crate::schemas::compile(settings, generated.path())?;
-        self.schemas.borrow_mut().clear();
+        let mut aliases = BTreeMap::new();
         for (name, source) in &schemas {
             let path = generated.path().join(format!("{name}.js"));
             fs::create_dir_all(path.parent().unwrap())?;
@@ -32,21 +36,18 @@ impl Compiler {
                 worker_source = worker_source.replace(&format!("{platform}.js"), platform);
             }
             fs::write(&path, worker_source)?;
-            self.schemas
-                .borrow_mut()
-                .insert(format!("capnp:./{name}"), path.clone());
+            aliases.insert(format!("capnp:./{name}"), path.clone());
         }
-        let worker = self.build(&settings.entry, limit)?;
+        let worker = self.build_worker(&settings.entry, limit, &aliases)?;
         if settings.ui.is_empty() && settings.assets.is_empty() && schemas.is_empty() {
             return Ok(worker);
         }
-        let mut inputs = self.inputs();
+        let mut inputs = worker.inputs;
         let stage = tempfile::tempdir()?;
         let output = stage.path().join("assets");
         fs::create_dir(&output)?;
         if !settings.ui.is_empty() {
-            self.build_browser(&settings.ui, &settings.root, &output)?;
-            inputs.extend(self.inputs());
+            inputs.extend(self.build_browser(&settings.ui, &settings.root, &output, &aliases)?);
         }
         let mut files = BTreeMap::new();
         let mut total = 0;
@@ -83,8 +84,7 @@ impl Compiler {
                 ),
             );
         }
-        self.schemas.borrow_mut().clear();
-        fs::write(stage.path().join("worker.mjs"), worker)?;
+        fs::write(stage.path().join("worker.mjs"), worker.code)?;
         let entry = format!(
             "import app from './worker.mjs';\nexport * from './worker.mjs';\nconst assets = {};\n{}",
             serde_json::to_string(&files)?,
@@ -92,11 +92,11 @@ impl Compiler {
         );
         let path = stage.path().join("entry.mjs");
         fs::write(&path, entry)?;
-        let result = self.build(&path, limit);
+        let mut result = self.build_worker(&path, limit, &BTreeMap::new())?;
         inputs
             .retain(|path| !path.starts_with(stage.path()) && !path.starts_with(generated.path()));
-        *self.inputs.borrow_mut() = inputs;
-        result
+        result.inputs = inputs;
+        Ok(result)
     }
 }
 fn collect(
