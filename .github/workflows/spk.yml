@@ -45,6 +45,13 @@ jobs:
         with:
           path: ~/.cache/lima
           key: lima-${{ steps.lima.outputs.version }}
+      - name: Prepare Sandstorm host directories
+        # vm create assumes setupvm already initialized this mounted directory.
+        # Run for PRs too, even when no signing secret is available.
+        run: |
+          umask 077
+          mkdir -p "$HOME/.sandstorm/caches"
+          touch "$HOME/.sandstorm/sandstorm-keyring"
       - name: Restore signing identity
         # PR builds always use a disposable identity, without repository secrets.
         if: github.event_name != 'pull_request'
