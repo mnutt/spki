@@ -3,15 +3,24 @@ name: CLI builds
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  workflow_call:
+    inputs:
+      runtime_ready:
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  runtime:
+    if: ${{ !inputs.runtime_ready }}
+    uses: ./.github/workflows/runtime.yml
   cli:
+    needs: runtime
+    if: ${{ !cancelled() && (needs.runtime.result == 'success' || inputs.runtime_ready) }}
     name: spki / ${{ matrix.target }}
     strategy:
       fail-fast: false
@@ -40,6 +49,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: spki-runtime
+          path: build
+      - name: Embed runtime in CLI builds
+        run: echo "SPKI_RUNTIME_BUNDLE=$GITHUB_WORKSPACE/build/runtime.xz" >> "$GITHUB_ENV"
       - name: Test
         run: cargo test --locked --workspace
       - name: Build CLI
@@ -53,7 +68,7 @@ jobs:
       - name: Host regression checks
         env:
           SPKI_TEST_BINARY: ${{ github.workspace }}/target/release/spki
-        run: python3 scripts/check-host.py
+        run: python3 scripts/check-host.py --embedded-runtime
       - name: Compare embedded and official schema compilers
         run: cargo test --locked -p spki --lib -- --ignored
       - name: Package CLI

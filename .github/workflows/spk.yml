@@ -3,15 +3,24 @@ name: Previewer SPK
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  workflow_call:
+    inputs:
+      runtime_ready:
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  runtime:
+    if: ${{ !inputs.runtime_ready }}
+    uses: ./.github/workflows/runtime.yml
   previewer:
+    needs: runtime
+    if: ${{ !cancelled() && (needs.runtime.result == 'success' || inputs.runtime_ready) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -23,14 +32,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: previewer
-      - name: Build and stage previewer
-        run: |
-          python3 scripts/fetch-host.py
-          cargo build --locked --release -p isolate-preview --bin isolate-preview
-          # The staging script's input path also serves local debug builds.
-          mkdir -p target/debug
-          cp target/release/isolate-preview target/debug/isolate-preview
-          python3 scripts/stage-preview.py
+      - uses: actions/download-artifact@v4
+        with:
+          name: spki-runtime
+          path: build
+      - name: Embed runtime in packager
+        run: echo "SPKI_RUNTIME_BUNDLE=$GITHUB_WORKSPACE/build/runtime.xz" >> "$GITHUB_ENV"
       - name: Prepare signing directory
         run: |
           umask 077
@@ -39,37 +46,34 @@ jobs:
         # PR builds always use a disposable identity, without repository secrets.
         if: github.event_name != 'pull_request'
         env:
-          RELEASE_KEYRING: ${{ secrets.SANDSTORM_KEYRING_B64 }}
           TEST_KEYRING: ${{ secrets.SANDSTORM_TEST_KEYRING_B64 }}
           TEST_APP_ID: ${{ vars.SANDSTORM_TEST_APP_ID }}
         run: |
           set -euo pipefail
           umask 077
           mkdir -p "$HOME/.sandstorm"
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            if [[ -z "$RELEASE_KEYRING" ]]; then
-              echo '::error::Set SANDSTORM_KEYRING_B64 to the previewer signing keyring before building a release tag.'
-              exit 1
-            fi
-            printf '%s' "$RELEASE_KEYRING" | base64 --decode > "$HOME/.sandstorm/sandstorm-keyring"
-          elif [[ -n "$TEST_KEYRING" && -n "$TEST_APP_ID" ]]; then
+          if [[ -n "$TEST_KEYRING" && -n "$TEST_APP_ID" ]]; then
             printf '%s' "$TEST_KEYRING" | base64 --decode > "$HOME/.sandstorm/sandstorm-keyring"
             printf '%s\n' "$TEST_APP_ID" > .sandstorm/sandstorm-test-app-id
           fi
       - name: Build and verify SPK
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            cargo run --locked --release -p spki --example package-preview -- --keyring "$HOME/.sandstorm/sandstorm-keyring" --output "build/isolate-preview-${GITHUB_REF_NAME}.spk"
-          else
-            signing_args=()
-            if [[ -f .sandstorm/sandstorm-test-app-id ]]; then
-              signing_args=(--keyring "$HOME/.sandstorm/sandstorm-keyring" --app-id "$(cat .sandstorm/sandstorm-test-app-id)")
-            fi
-            cargo run --locked --release -p spki --example package-preview -- --test --app-version "$GITHUB_RUN_NUMBER" "${signing_args[@]}" --output "build/isolate-preview-test-${GITHUB_SHA}.spk"
+          signing_args=()
+          if [[ -f .sandstorm/sandstorm-test-app-id ]]; then
+            signing_args=(--keyring "$HOME/.sandstorm/sandstorm-keyring" --app-id "$(cat .sandstorm/sandstorm-test-app-id)")
           fi
+          # Commit time keeps the upgrade counter consistent across calling workflows.
+          app_version=$(git show -s --format=%ct HEAD)
+          label="$GITHUB_SHA"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then label="$GITHUB_REF_NAME"; fi
+          cargo run --locked --release -p spki --example package-preview -- --test --app-version "$app_version" "${signing_args[@]}" --output "build/isolate-preview-test-${label}.spk"
+          cd build
+          sha256sum "isolate-preview-test-${label}.spk" > "isolate-preview-test-${label}.spk.sha256"
       - uses: actions/upload-artifact@v4
         with:
           name: isolate-preview-spk
-          path: build/*.spk
+          path: |
+            build/*.spk
+            build/*.spk.sha256
           if-no-files-found: error

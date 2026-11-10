@@ -1,0 +1,32 @@
+name: Runtime bundle
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Rust
+        run: rustup toolchain install 1.98.0 --profile minimal && rustup default 1.98.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: runtime-linux-x86_64
+      - name: Build pinned Linux runtime
+        run: |
+          python3 scripts/fetch-host.py
+          cargo build --locked --release -p isolate-preview --bin isolate-preview
+          mkdir -p target/debug
+          cp target/release/isolate-preview target/debug/isolate-preview
+          python3 scripts/stage-preview.py
+          python3 scripts/bundle-runtime.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spki-runtime
+          path: build/runtime.xz
+          if-no-files-found: error
