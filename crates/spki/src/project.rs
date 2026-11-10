@@ -123,7 +123,7 @@ pub fn read(file: &Path) -> Result<Settings> {
     );
     ensure!(
         project.runtime.release == "0.1.2"
-            && project.runtime.host_sha256 == isolate_preview::HOST_SHA256,
+            && project.runtime.host_sha256 == spki_common::HOST_SHA256,
         "project runtime differs from this CLI"
     );
     ensure!(
@@ -132,7 +132,7 @@ pub fn read(file: &Path) -> Result<Settings> {
     );
     super::store_path(&project.preview.profile)?;
     if !project.preview.project.is_empty() {
-        isolate_preview::workspace::validate_id(&project.preview.project)?;
+        spki_common::validate_id(&project.preview.project)?;
     }
     let pkg = config.package()?;
     ensure!(
@@ -289,7 +289,7 @@ const spki :Spki.Project = (
   preview = (profile = "{profile}", project = "{project_id}")
 );
 "#,
-        host = isolate_preview::HOST_SHA256,
+        host = spki_common::HOST_SHA256,
         version = version
     );
     fs::write(temporary.path().join(CONFIG), config)?;
@@ -397,9 +397,9 @@ impl Settings {
     pub fn bindings(
         &self,
         inputs: &mut std::collections::BTreeSet<PathBuf>,
-    ) -> Result<Vec<isolate_preview::bindings::Binding>> {
+    ) -> Result<Vec<spki_common::bindings::Binding>> {
         use base64::{Engine, engine::general_purpose::STANDARD};
-        use isolate_preview::bindings::{Binding as Native, Value};
+        use spki_common::bindings::{Binding as Native, Value};
         let mut output = Vec::new();
         ensure!(
             self.bindings.len() <= 64,
@@ -424,16 +424,16 @@ impl Settings {
                     let metadata = fs::metadata(&file)?;
                     ensure!(
                         metadata.is_file()
-                            && metadata.len() <= isolate_preview::bindings::MAX_VALUE as u64,
+                            && metadata.len() <= spki_common::bindings::MAX_VALUE as u64,
                         "binding dataFile must be a regular file no larger than 1 MiB"
                     );
                     use std::io::Read;
                     let mut data = Vec::new();
                     fs::File::open(file)?
-                        .take(isolate_preview::bindings::MAX_VALUE as u64 + 1)
+                        .take(spki_common::bindings::MAX_VALUE as u64 + 1)
                         .read_to_end(&mut data)?;
                     ensure!(
-                        data.len() <= isolate_preview::bindings::MAX_VALUE,
+                        data.len() <= spki_common::bindings::MAX_VALUE,
                         "binding dataFile exceeds 1 MiB"
                     );
                     Value::Data(STANDARD.encode(data))
@@ -444,7 +444,7 @@ impl Settings {
                 value,
             });
         }
-        isolate_preview::bindings::validate(&output)?;
+        spki_common::bindings::validate(&output)?;
         Ok(output)
     }
 }

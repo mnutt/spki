@@ -16,12 +16,7 @@ const MAX_ENTRIES: usize = 2048;
 const MAX_LINE: usize = 8192;
 const MAX_SUBSCRIBERS: usize = 16;
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct Entry {
-    pub timestamp_ms: u64,
-    pub source: String,
-    pub message: String,
-}
+pub use spki_common::protocol::Entry;
 struct Stored {
     sequence: u64,
     entry: Entry,

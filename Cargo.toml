@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/isolate-protocol", "crates/isolate-preview", "crates/spki"]
+members = ["crates/spki-common", "crates/isolate-protocol", "crates/isolate-preview", "crates/spki"]
 resolver = "2"
 
 [workspace.package]

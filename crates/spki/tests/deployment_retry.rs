@@ -1,5 +1,5 @@
 //! Exercise the real watcher against a local HTTP fixture, without Sandstorm.
-use isolate_preview::{controller::revision, protocol::Info};
+use spki_common::{revision, protocol::Info};
 use serde_json::{Value, json};
 use std::{
     fs,
@@ -69,7 +69,7 @@ impl Server {
                     "/__spki/v1/info" => serde_json::to_string(&Info {
                         protocol_version: 1,
                         revision: live.clone(),
-                        host_sha256: isolate_preview::HOST_SHA256.into(),
+                        host_sha256: spki_common::HOST_SHA256.into(),
                         sdk_revision: revision(b""),
                         deployment: true,
                         log_stream: true,

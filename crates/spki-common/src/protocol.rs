@@ -30,3 +30,10 @@ pub struct Revision {
 pub struct Error {
     pub error: String,
 }
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct Entry {
+    pub timestamp_ms: u64,
+    pub source: String,
+    pub message: String,
+}

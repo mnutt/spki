@@ -90,7 +90,7 @@ pub fn pack(file: &Path, options: Options) -> Result<()> {
     fs::write(
         stage.path().join("app/config.json"),
         serde_json::to_vec_pretty(
-            &serde_json::json!({"title":title,"revision":isolate_preview::controller::revision(code.as_bytes())}),
+            &serde_json::json!({"title":title,"revision":spki_common::revision(code.as_bytes())}),
         )?,
     )?;
     fs::write(

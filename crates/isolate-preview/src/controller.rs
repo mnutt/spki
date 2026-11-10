@@ -1,7 +1,6 @@
 //! Revision selection is atomic; worker initialization side effects are not rolled back.
 use crate::{Host, Runtime};
 use anyhow::{Result, ensure};
-use sha2::{Digest, Sha256};
 use std::{
     cell::{Cell, RefCell},
     io::Write,
@@ -27,22 +26,7 @@ impl Drop for Candidate {
         }
     }
 }
-pub fn revision(source: &[u8]) -> String {
-    let mut hash = Sha256::new();
-    for data in [
-        crate::HOST_SHA256.as_bytes(),
-        b"2026-06-10",
-        b"spki-workspace-v1",
-        crate::SDK_MODULES_JSON.as_bytes(),
-        include_bytes!("../sdk/entry.js"),
-        include_bytes!("../browser/client.js"),
-        source,
-    ] {
-        hash.update((data.len() as u64).to_le_bytes());
-        hash.update(data);
-    }
-    hash.finalize().iter().map(|b| format!("{b:02x}")).collect()
-}
+pub use spki_common::revision;
 impl Controller {
     pub async fn start(
         stream: tokio::net::UnixStream,

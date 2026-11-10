@@ -1,6 +1,6 @@
 use crate::credentials::{Credential, sandstorm_loopback};
 use anyhow::{Context, Result, bail, ensure};
-use isolate_preview::protocol::{Activation, Error as ErrorResponse, Info, Revision};
+use spki_common::protocol::{Activation, Error as ErrorResponse, Info, Revision};
 use reqwest::{Url, blocking::Client};
 use std::{io::Read, time::Duration};
 pub(crate) struct Api {
@@ -71,7 +71,7 @@ impl Api {
         serde_json::from_slice(&body).map_err(|_| anyhow::anyhow!("invalid Preview response"))
     }
     pub(crate) fn select_project(&mut self, id: &str) -> Result<()> {
-        isolate_preview::workspace::validate_id(id)?;
+        spki_common::validate_id(id)?;
         ensure!(
             self.info()?.workspace,
             "Preview does not support workspaces; update the Preview app"
@@ -93,8 +93,8 @@ impl Api {
             "incompatible Preview protocol or missing deployment permission"
         );
         ensure!(
-            info.host_sha256 == isolate_preview::HOST_SHA256
-                && info.sdk_revision == isolate_preview::controller::revision(b""),
+            info.host_sha256 == spki_common::HOST_SHA256
+                && info.sdk_revision == spki_common::revision(b""),
             "Preview runtime/SDK differs from this CLI; update the CLI or Preview app"
         );
         ensure!(
@@ -113,7 +113,7 @@ pub(crate) fn revision(value: &str) -> Result<String> {
     Ok(value.to_owned())
 }
 pub(crate) fn deploy(api: &Api, source: &str, expected: &mut String) -> Result<()> {
-    let desired = isolate_preview::controller::revision(source.as_bytes());
+    let desired = spki_common::revision(source.as_bytes());
     let payload = Activation {
         source: source.to_owned(),
         expected_revision: expected.clone(),

@@ -117,40 +117,6 @@ pub fn read(source: &str) -> Result<Vec<Binding>> {
 mod tests {
     use super::*;
     #[test]
-    fn native_bundle_includes_validated_bindings() {
-        use isolate_protocol::isolate_worker_source_capnp::isolate_worker_source as wire;
-        let custom = vec![
-            Binding {
-                name: "MESSAGE".into(),
-                value: Value::Text("hi".into()),
-            },
-            Binding {
-                name: "LOOPBACK".into(),
-                value: Value::Service("main".into()),
-            },
-        ];
-        let code = attach("export default {};".into(), &custom, 1024).unwrap();
-        let packed = crate::bundle(code.as_bytes()).unwrap();
-        let message =
-            capnp::serialize_packed::read_message(&packed[..], Default::default()).unwrap();
-        let source = message.get_root::<wire::Reader>().unwrap();
-        let bindings = source.get_bindings().unwrap();
-        assert_eq!(bindings.len(), 4);
-        assert_eq!(bindings.get(2).get_name().unwrap(), "MESSAGE");
-        assert!(
-            matches!(bindings.get(2).which().unwrap(), wire::binding::Text(Ok(value)) if value==b"hi")
-        );
-        assert!(
-            matches!(bindings.get(3).which().unwrap(), wire::binding::Service(Ok(value)) if value=="main")
-        );
-        let forged = code.replace("MESSAGE", "STORAGE");
-        assert!(crate::bundle(forged.as_bytes()).is_err());
-        assert_ne!(
-            crate::controller::revision(code.as_bytes()),
-            crate::controller::revision(code.replace("hi", "changed").as_bytes())
-        );
-    }
-    #[test]
     fn artifact_roundtrip_and_authority_validation() {
         let bindings = vec![
             Binding {

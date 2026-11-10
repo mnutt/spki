@@ -24,8 +24,8 @@ pub fn stage(root: &Path, stage: &Path) -> Result<()> {
         "unsupported runtime bundle format or target"
     );
     ensure!(
-        receipt["hostSha256"] == isolate_preview::HOST_SHA256
-            && receipt["sdkRevision"] == isolate_preview::controller::revision(b""),
+        receipt["hostSha256"] == spki_common::HOST_SHA256
+            && receipt["sdkRevision"] == spki_common::revision(b""),
         "runtime bundle differs from this CLI"
     );
     let files = receipt["files"]
@@ -70,7 +70,7 @@ pub fn stage(root: &Path, stage: &Path) -> Result<()> {
         );
         if name == "bin/isolate-host" {
             ensure!(
-                hash(&bytes) == isolate_preview::HOST_SHA256,
+                hash(&bytes) == spki_common::HOST_SHA256,
                 "incorrect host binary"
             );
         }

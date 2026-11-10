@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 [dependencies]
+spki-common = { path = "../spki-common" }
 isolate-protocol = { path = "../isolate-protocol" }
 capnp.workspace = true
 capnp-rpc.workspace = true

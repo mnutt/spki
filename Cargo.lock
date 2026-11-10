@@ -1351,6 +1351,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "spki-common",
  "tempfile",
  "tokio",
  "tokio-tungstenite",
@@ -3549,7 +3550,6 @@ dependencies = [
  "clap",
  "ed25519-dalek",
  "getrandom 0.4.3",
- "isolate-preview",
  "libc",
  "lightningcss",
  "lzma-rust2",
@@ -3568,8 +3568,20 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "spki-common",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "spki-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

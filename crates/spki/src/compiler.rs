@@ -116,7 +116,7 @@ fn emit_asset(path: &Path, assets: &mut BTreeMap<String, Vec<u8>>) -> Result<Str
 impl Compiler {
     pub fn new() -> Result<Self> {
         let sdk: Value =
-            serde_json::from_str(isolate_preview::SDK_MODULES_JSON)?;
+            serde_json::from_str(spki_common::SDK_MODULES_JSON)?;
         Ok(Self {
             modules: sdk
                 .as_object()

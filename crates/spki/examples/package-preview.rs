@@ -4,7 +4,7 @@ use spki::{package_capnp, spk};
 use anyhow::{Context, Result, ensure};
 use capnp::{message::Builder, serialize};
 use clap::Parser;
-use std::{fs, path::PathBuf, process::Command};
+use std::{fs, path::PathBuf};
 
 #[derive(Parser)]
 struct Args {
@@ -40,20 +40,12 @@ fn main() -> Result<()> {
     // remain shared with local development. This uses the schema compiler only,
     // not the spk command or a running server.
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let parsed = Command::new("capnp")
-        .args(["eval", "--binary"])
-        .arg(format!("-I{}", root.join("crates/spki/schema").display()))
-        .arg(root.join(".sandstorm/sandstorm-pkgdef.capnp"))
-        .arg("pkgdef")
-        .output()
-        .context("run the Cap'n Proto schema compiler")?;
-    ensure!(
-        parsed.status.success(),
-        "invalid package definition: {}",
-        String::from_utf8_lossy(&parsed.stderr)
-    );
-    let definition = serialize::read_message(parsed.stdout.as_slice(), Default::default())?;
-    let definition = definition.get_root::<package_capnp::package_definition::Reader>()?;
+    let definition = spki::capnp_compiler::Configuration::read(
+        &root.join(".sandstorm/sandstorm-pkgdef.capnp"),
+        &root.join("crates/spki/schema"),
+    )?;
+    let package = definition.package()?;
+    let manifest_bytes = definition.manifest()?;
     let temporary = tempfile::tempdir()?;
     let signing = if args.test {
         if let Some(id) = &args.app_id {
@@ -73,10 +65,11 @@ fn main() -> Result<()> {
             spk::identity(&keyring, &id)?
         }
     } else {
-        spk::identity(&spk::keyring(args.keyring)?, definition.get_id()?.to_str()?)?
+        spk::identity(&spk::keyring(args.keyring)?, package["id"].as_str().context("package ID missing")?)?
     };
     let mut manifest = Builder::new_default();
-    manifest.set_root(definition.get_manifest()?)?;
+    let input = serialize::read_message(manifest_bytes.as_slice(), Default::default())?;
+    manifest.set_root(input.get_root::<package_capnp::manifest::Reader>()?)?;
     if args.test {
         let mut value = manifest.get_root::<package_capnp::manifest::Builder>()?;
         value

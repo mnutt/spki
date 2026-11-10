@@ -1,7 +1,7 @@
 //! A separate streaming connection keeps app logs independent of serial builds/deployments.
 use crate::credentials::{Credential, sandstorm_loopback};
 use anyhow::{Context, Result, ensure};
-use isolate_preview::logs::Entry;
+use spki_common::protocol::Entry;
 use std::{sync::mpsc, time::Duration};
 
 pub(crate) struct Follower {

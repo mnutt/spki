@@ -1,5 +1,5 @@
 #![forbid(unsafe_code)]
-pub mod bindings;
+pub use spki_common::bindings;
 pub mod bridge;
 pub mod browser;
 pub mod controller;
@@ -7,7 +7,7 @@ mod disk;
 pub mod grain;
 mod http_adapter;
 pub mod logs;
-pub mod protocol;
+pub use spki_common::protocol;
 mod reload;
 mod routes;
 pub mod storage;
@@ -21,9 +21,7 @@ use isolate_protocol::{
 use std::{cell::RefCell, rc::Rc};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-pub const HOST_SHA256: &str = "94b04f0ed5ad0f3ff862dcadd1b7edfe6cad1717587a60b7d8e6775541b538b1";
-// A static keeps one embedded copy shared by the runtime and the CLI crate.
-pub static SDK_MODULES_JSON: &str = include_str!("../sdk/modules.json");
+pub use spki_common::{HOST_SHA256, SDK_MODULES_JSON};
 pub mod transport;
 use transport::{HttpResponse, ResponseContext, ResponseState};
 pub fn bundle(js: &[u8]) -> Result<Vec<u8>> {
@@ -323,6 +321,42 @@ pub async fn probe(stream: tokio::net::UnixStream, js: &[u8]) -> Result<(u16, Ve
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bindings::{attach, Binding, Value};
+    #[test]
+    fn native_bundle_includes_validated_bindings() {
+        use isolate_protocol::isolate_worker_source_capnp::isolate_worker_source as wire;
+        let custom = vec![
+            Binding {
+                name: "MESSAGE".into(),
+                value: Value::Text("hi".into()),
+            },
+            Binding {
+                name: "LOOPBACK".into(),
+                value: Value::Service("main".into()),
+            },
+        ];
+        let code = attach("export default {};".into(), &custom, 1024).unwrap();
+        let packed = crate::bundle(code.as_bytes()).unwrap();
+        let message =
+            capnp::serialize_packed::read_message(&packed[..], Default::default()).unwrap();
+        let source = message.get_root::<wire::Reader>().unwrap();
+        let bindings = source.get_bindings().unwrap();
+        assert_eq!(bindings.len(), 4);
+        assert_eq!(bindings.get(2).get_name().unwrap(), "MESSAGE");
+        assert!(
+            matches!(bindings.get(2).which().unwrap(), wire::binding::Text(Ok(value)) if value==b"hi")
+        );
+        assert!(
+            matches!(bindings.get(3).which().unwrap(), wire::binding::Service(Ok(value)) if value=="main")
+        );
+        let forged = code.replace("MESSAGE", "STORAGE");
+        assert!(crate::bundle(forged.as_bytes()).is_err());
+        assert_ne!(
+            crate::controller::revision(code.as_bytes()),
+            crate::controller::revision(code.replace("hi", "changed").as_bytes())
+        );
+    }
+
     #[test]
     fn bundle_preserves_javascript_and_version() {
         let js = b"export default {fetch() {return new Response('ok')}}";

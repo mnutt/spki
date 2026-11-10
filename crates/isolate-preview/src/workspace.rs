@@ -28,17 +28,7 @@ const MAX_PROJECTS: usize = 16;
 fn error(value: impl ToString) -> capnp::Error {
     capnp::Error::failed(value.to_string())
 }
-pub fn validate_id(id: &str) -> anyhow::Result<()> {
-    anyhow::ensure!(
-        !id.is_empty()
-            && id.len() <= 64
-            && id
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
-        "project ID must contain 1–64 letters, numbers, hyphens or underscores"
-    );
-    Ok(())
-}
+pub use spki_common::validate_id;
 struct ProjectRuntime {
     view: Rc<View>,
     alive: Rc<Cell<bool>>,
