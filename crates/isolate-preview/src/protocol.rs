@@ -17,6 +17,8 @@ pub struct Info {
     #[serde(default)]
     pub log_stream: bool,
     #[serde(default)]
+    pub workspace: bool,
+    #[serde(default)]
     pub recovery: bool,
     pub max_source_bytes: usize,
 }

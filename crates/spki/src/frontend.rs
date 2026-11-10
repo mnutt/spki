@@ -45,60 +45,8 @@ impl Compiler {
         let output = stage.path().join("assets");
         fs::create_dir(&output)?;
         if !settings.ui.is_empty() {
-            let mut command = std::process::Command::new(&self.binary);
-            command
-                .current_dir(&settings.root)
-                .args(&settings.ui)
-                .args([
-                    "--bundle",
-                    "--format=esm",
-                    "--platform=browser",
-                    "--target=es2022",
-                    "--splitting",
-                    "--charset=utf8",
-                    "--color=false",
-                    "--log-level=warning",
-                    "--entry-names=[name]",
-                    "--chunk-names=chunks/[name]-[hash]",
-                    "--asset-names=media/[name]-[hash]",
-                    "--public-path=/assets",
-                    "--loader:.png=file",
-                    "--loader:.jpg=file",
-                    "--loader:.svg=file",
-                    "--loader:.webp=file",
-                    "--loader:.woff2=file",
-                    "--loader:.ico=file",
-                    "--external:/capnp-es/*",
-                    "--external:/__sandstorm/*",
-                ])
-                .arg(format!("--outdir={}", output.display()))
-                .arg(format!(
-                    "--metafile={}",
-                    stage.path().join("meta.json").display()
-                ));
-            self.runtime_aliases(&mut command, true);
-            for name in schemas.keys() {
-                command.arg(format!(
-                    "--alias:capnp:./{name}=/__sandstorm/capnp/{name}.js"
-                ));
-            }
-            let result = command
-                .output()
-                .context("could not launch browser compiler")?;
-            ensure!(
-                result.status.success(),
-                "browser bundle failed: {}",
-                String::from_utf8_lossy(&result.stderr)
-            );
-            let meta: serde_json::Value =
-                serde_json::from_slice(&fs::read(stage.path().join("meta.json"))?)?;
-            for path in meta["inputs"]
-                .as_object()
-                .context("missing browser build inputs")?
-                .keys()
-            {
-                inputs.insert(settings.root.join(path));
-            }
+            self.build_browser(&settings.ui, &settings.root, &output)?;
+            inputs.extend(self.inputs());
         }
         let mut files = BTreeMap::new();
         let mut total = 0;

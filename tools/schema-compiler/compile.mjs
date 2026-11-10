@@ -1,3 +1,4 @@
+// Maintainer-only reference for differential tests, not used by spki.
 // Install with npm ci --prefix tools/schema-compiler. Pins match the vendored SDK.
 import path from 'node:path';
 import {compileAll} from '@mnutt/capnp-es/compiler';

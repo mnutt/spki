@@ -1,0 +1,19 @@
+{
+  "package": "@mnutt/capnp-es",
+  "version": "0.3.0",
+  "generatorSha256": "5f05e8187f0ed78ea6b87080838def802586d179518ad02df6005bb644cfe6e0",
+  "upstreamModules": {
+    "dist/capnp/schema.mjs": "ccf9da425a92829578891018a1816c6016cb0a097f5e7338c4e234a6a11d6c75",
+    "dist/shared/capnp-es.-eBPt7Ee.mjs": "9959cf9d558932b610ff122331ba0a6f2f38b69c6c59c5b433ee682a0b9154d8",
+    "dist/shared/capnp-es.B14jf117.mjs": "2a345f5f2b4520795b5b2ef8d2c8ddc1ca89f460dc4156c0d860585c582a9dd6",
+    "dist/shared/capnp-es.Bh8zPymV.mjs": "51b63afa5bb6c6913cca9565fa297636ff79eab5fbf66ea06276574f33e9105e",
+    "dist/shared/capnp-es.DROKST6p.mjs": "16b3f88d12da96519db76e6474b9e6737f4689a45e91aac0c2b837664d535d3a",
+    "dist/shared/capnp-es.DlrkfTBx.mjs": "9f6139d32b0408a127cf81e337af35f8cf8e29fb1ff46081ecd76ed0c50eff4b",
+    "dist/shared/capnp-es.HHDlMVVz.mjs": "ad29db4f02e49610c498ba973fd7728ac746de0e6226140116353d1f5191ee3a",
+    "dist/shared/capnp-es.S5efx5db.mjs": "bc01af5d4e24ce9e1c750f30a4812f8ae76690ab181e6110617c0385673e2e45",
+    "dist/shared/capnp-es.cQtDh6nd.mjs": "5f05e8187f0ed78ea6b87080838def802586d179518ad02df6005bb644cfe6e0",
+    "dist/shared/capnp-es.iq9U7f6E.mjs": "d9fd4d64840735960a57209495d2f8fd0588206c5b4f60db9de472b2d92b8954",
+    "dist/shared/capnp-es.ujbiBnSV.mjs": "a88e51b260c8abf72e8b5be0f0ca02c49e976906c5f3329f5cf3a394946fb7ab"
+  },
+  "bundleSha256": "d22aa8c82f57945aa03838799c1b34f767f964217f3058ff6180a4486f04d1f1"
+}

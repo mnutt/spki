@@ -35,7 +35,7 @@ impl Api {
     fn request<T: serde::de::DeserializeOwned>(
         &self,
         route: &str,
-        payload: Option<&Activation>,
+        payload: Option<&serde_json::Value>,
     ) -> Result<T> {
         let url = format!("{}__spki/v1/{route}", self.credential.endpoint);
         let request = if let Some(body) = payload {
@@ -69,6 +69,22 @@ impl Api {
             bail!("Preview HTTP {}: {}", status.as_u16(), safe);
         }
         serde_json::from_slice(&body).map_err(|_| anyhow::anyhow!("invalid Preview response"))
+    }
+    pub(crate) fn select_project(&mut self, id: &str) -> Result<()> {
+        isolate_preview::workspace::validate_id(id)?;
+        ensure!(
+            self.info()?.workspace,
+            "Preview does not support workspaces; update the Preview app"
+        );
+        let _: serde_json::Value = self.request(
+            &format!("projects/{id}/create"),
+            Some(&serde_json::json!({})),
+        )?;
+        self.credential
+            .endpoint
+            .push_str(&format!("__spki/v1/projects/{id}/"));
+        println!("Workspace project {id}. Open /__spki/open/{id} in your Preview grain.");
+        Ok(())
     }
     pub(crate) fn info(&self) -> Result<Info> {
         let info: Info = self.request("info", None)?;
@@ -106,7 +122,7 @@ pub(crate) fn deploy(api: &Api, source: &str, expected: &mut String) -> Result<(
         serde_json::to_vec(&payload)?.len() <= 9 * 1024 * 1024,
         "encoded upload exceeds Preview limit"
     );
-    match api.request::<Revision>("activate", Some(&payload)) {
+    match api.request::<Revision>("activate", Some(&serde_json::to_value(&payload)?)) {
         Ok(value) => ensure!(
             revision(&value.revision)? == desired,
             "Preview acknowledged an unexpected revision"

@@ -1,11 +1,7 @@
 fn main() {
     println!("cargo:rerun-if-changed=schema");
-    println!("cargo:rerun-if-env-changed=CAPNP");
-    let mut compiler = capnpc::CompilerCommand::new();
+    let mut compiler = capnp_compiler::CompileCommand::new();
     compiler.src_prefix("schema").import_path("schema");
-    if let Ok(path) = std::env::var("CAPNP") {
-        compiler.capnp_executable(path);
-    }
     for file in [
         "sandstorm/api-session.capnp",
         "sandstorm/isolate-bridge.capnp",
@@ -25,7 +21,9 @@ fn main() {
     ] {
         compiler.file(format!("schema/{file}"));
     }
-    compiler
-        .run()
-        .expect("install the standard capnp compiler or set CAPNP");
+    let request = compiler.run_bytes().expect("compile protocol schemas");
+    capnpc::codegen::CodeGenerationCommand::new()
+        .output_directory(std::env::var("OUT_DIR").unwrap())
+        .run(request.as_slice())
+        .expect("generate protocol bindings");
 }

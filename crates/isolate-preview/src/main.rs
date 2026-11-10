@@ -67,7 +67,7 @@ async fn run(
     let js = std::fs::read(&args[3]).context("read worker")?;
     let (parent, child) = std::os::unix::net::UnixStream::pair()?;
     parent.set_nonblocking(true)?;
-    let mut command = tokio::process::Command::new(host);
+    let mut command = tokio::process::Command::new(&host);
     command
         .args(["--control-fd", "0"])
         .stdin(Stdio::from(OwnedFd::from(child)))
@@ -120,9 +120,7 @@ async fn run(
                         .context("missing app title")?
                         .to_owned()
                 };
-                let view: isolate_protocol::grain_capnp::main_view::Client<
-                    capnp::any_pointer::Owned,
-                > = capnp_rpc::new_client(isolate_preview::grain::View {
+                let view = std::rc::Rc::new(isolate_preview::grain::View {
                     controller: runtime.clone(),
                     logs,
                     mode: if preview {
@@ -132,6 +130,17 @@ async fn run(
                     },
                     title,
                 });
+                let view: isolate_protocol::grain_capnp::main_view::Client<
+                    capnp::any_pointer::Owned,
+                > = if preview {
+                    capnp_rpc::new_client_from_rc(isolate_preview::workspace::Workspace::new(
+                        view,
+                        host.clone(),
+                        "/var/projects".into(),
+                    ))
+                } else {
+                    capnp_rpc::new_client_from_rc(view)
+                };
                 let (read, write) = supervisor.compat().split();
                 let network =
                     twoparty::VatNetwork::new(read, write, Side::Client, Default::default());

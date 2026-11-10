@@ -25,7 +25,7 @@ function request(webkey, route) {
 }
 (async()=>{
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'spki-gateway-'));
-  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config'),SPKI_ESBUILD:path.join(root,'build/tools/esbuild')};
+  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config')};
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',args:['--host-resolver-rules=MAP *.local.sandstorm.io 127.0.0.1, MAP local.sandstorm.io 127.0.0.1','--no-proxy-server']});
   const page = await browser.newPage();page.setDefaultTimeout(60000);
   page.on('pageerror', error=>console.error('browser error:',redact(String(error))));
@@ -155,6 +155,7 @@ function request(webkey, route) {
     cli(['--profile','starter','init',projectDir]);
     cli(['--project',projectDir,'auth','--webkey-stdin','--allow-local-http'],developer);
     cli(['--project',projectDir,'dev','--once']);
+    frame=await require('./workspace-frame.cjs')(frame,fs.readFileSync(path.join(projectDir,'sandstorm-pkgdef.capnp'),'utf8').match(/project = "([^"]+)"/)[1]);
     await frame.locator('h1').filter({hasText:'Hello from your isolate'}).waitFor({timeout:20000});
     const watcher=spawn(path.join(root,'target/debug/spki'),['dev'],{env,cwd:path.join(projectDir,'src'),stdio:['ignore','pipe','pipe']});
     let watchOutput='';

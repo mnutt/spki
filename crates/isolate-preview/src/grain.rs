@@ -482,7 +482,12 @@ impl web::Server for Session {
         .await
     }
 }
-fn reply(mut results: web::GetResults, status: u16, mime: &str, bytes: &[u8]) -> capnp::Result<()> {
+pub(crate) fn reply(
+    mut results: web::GetResults,
+    status: u16,
+    mime: &str,
+    bytes: &[u8],
+) -> capnp::Result<()> {
     crate::http_adapter::write_response(
         results.get(),
         &crate::transport::HttpResponse {
@@ -551,6 +556,7 @@ impl Session {
                     sdk_revision: crate::controller::revision(b""),
                     deployment: true,
                     log_stream: true,
+                    workspace: true,
                     recovery: self.controller.is_recovering(),
                     max_source_bytes: 8 * 1024 * 1024,
                 };

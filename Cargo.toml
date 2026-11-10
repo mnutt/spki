@@ -11,10 +11,14 @@ license = "Apache-2.0"
 capnp = "0.27"
 capnp-rpc = "0.27"
 capnpc = "0.27"
+capnp-compiler = { git = "https://github.com/FreeSynergy/fs-capnpc", rev = "7dd646784aa843100203e308875a40d5edd06a93" }
 tokio = { version = "1", features = ["rt", "macros", "net", "time", "process", "io-util", "io-std", "sync"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 futures = "0.3"
 anyhow = "1"
+
+[profile.release]
+strip = "symbols"
 
 # Compression is prohibitively slow without optimization, even in a debug CLI build.
 [profile.dev.package.lzma-rust2]

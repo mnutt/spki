@@ -25,7 +25,7 @@ function request(webkey, route) {
 }
 (async()=>{
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'spki-examples-'));
-  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config'),SPKI_ESBUILD:path.join(root,'build/tools/esbuild')};
+  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config')};
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',args:['--host-resolver-rules=MAP *.local.sandstorm.io 127.0.0.1, MAP local.sandstorm.io 127.0.0.1','--no-proxy-server']});
   const context = await browser.newContext();
   // These checks navigate explicitly; automatic reload can destroy evaluate() mid-assertion.
@@ -33,6 +33,8 @@ function request(webkey, route) {
   const page = await context.newPage();page.setDefaultTimeout(60000);
   page.on('pageerror', error=>console.error('browser error:',redact(String(error))));
   let grainId;
+  let activeProject="";
+  const openProject=async frame=>activeProject ? require("./workspace-frame.cjs")(frame,activeProject) : frame;
   const label = `spki-examples-${Date.now()}`;
   const cli = (args,input,success=true)=>{
     const result=spawnSync(path.join(root,'target/debug/spki'),args,{env,input,encoding:'utf8',timeout:45000});
@@ -97,7 +99,7 @@ function request(webkey, route) {
     cli(['auth','status']);
     cli(['--profile','viewer','auth','--webkey-stdin','--allow-local-http'],viewer,false);
 
-    if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); }
+    if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); frame=await openProject(frame); }
     const names=process.env.SPKI_EXAMPLES?.split(',') || ['hello','storage-counter','app-skeleton','capnp-rpc','object-store','typescript','browser-capnp','counter','powerbox-http','capability-provider','service-binding','streaming'];
     for(const name of names) {
       progress(`checking example ${name}`);
@@ -148,9 +150,10 @@ const encoder =`)
           }
         `));
       }
+      activeProject=fs.readFileSync(path.join(projectDir,'sandstorm-pkgdef.capnp'),'utf8').match(/project = "([^"]+)"/)?.[1] || '';
       cli(['--project',projectDir,'auth','--webkey-stdin','--allow-local-http'],developer);
       cli(['--project',projectDir,'dev','--once']);
-      await frame.goto(new URL('/',frame.url()).href);
+      if(activeProject)frame=await openProject(frame);else await frame.goto(new URL('/',frame.url()).href);
       async function json(route,post=false) {
         return frame.evaluate(async({route,post})=>{
           const response=await fetch(route,{method:post?'POST':'GET'});
@@ -287,7 +290,7 @@ const encoder =`)
           await page.waitForTimeout(250);
         }
         assert(ready,'Preview did not recover');
-        await page.reload();frame=await appFrame();
+        await page.reload();frame=await appFrame(); frame=await openProject(frame);
         const restored=await json('/json');
         assert.equal(restored.textBinding,'Updated binding');
         assert.deepEqual(restored.dataBinding,{bytes:2,checksum:15});
@@ -315,7 +318,7 @@ const encoder =`)
           await page.waitForTimeout(250);
         }
         assert(ready,'Preview did not recover');
-        await page.reload(); frame=await appFrame();
+        await page.reload(); frame=await appFrame(); frame=await openProject(frame);
         assert.equal((await json('/test-restore')).path,'/shared/info');
         const worker=path.join(projectDir,'worker.js');
         fs.writeFileSync(worker,fs.readFileSync(worker,'utf8').replace('provider-web-session','provider-web-session-v2'));
@@ -342,7 +345,7 @@ const encoder =`)
           await page.waitForTimeout(250);
         }
         assert(ready,'Preview API did not recover after restart');
-        await page.reload(); frame=await appFrame();
+        await page.reload(); frame=await appFrame(); frame=await openProject(frame);
         assert(Number(await frame.locator('.count').innerText())>before,'counter did not survive restart');
       } else if(name==='app-skeleton') {
         assert.equal((await json('/hello?name=SPKI')).greeting,'Hello, SPKI!');

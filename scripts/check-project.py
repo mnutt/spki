@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Offline project initialization/configuration regression checks."""
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -8,7 +9,7 @@ root=Path(__file__).resolve().parent.parent
 cli=root/'target/debug/spki'
 with tempfile.TemporaryDirectory() as temp:
     base=Path(temp)
-    env=dict(os.environ,SPKI_ESBUILD=str(root/'build/tools/esbuild'),XDG_CONFIG_HOME=str(base/'credentials'))
+    env=dict(os.environ,XDG_CONFIG_HOME=str(base/'credentials'))
     def run(*args,cwd=base,ok=True):
         result=subprocess.run([str(cli),*args],cwd=cwd,env=env,capture_output=True,text=True,timeout=25)
         assert (result.returncode==0)==ok,(args,result.stdout,result.stderr)
@@ -54,9 +55,10 @@ with tempfile.TemporaryDirectory() as temp:
         original.replace('formatVersion = 1','formatVersion = 99'),
         original.replace('2026-06-10','2000-01-01'),
         original.replace('release = "0.1.2"','release = "wrong"'),
-        original.replace('executable = "esbuild"','executable = ""'),
+        original.replace('name = "rolldown"','name = "other"'),
         original.replace('src/worker.ts','../worker.ts'),
-        original.replace('preview = (profile = "example")','preview = (profile = "../bad")'),
+        original.replace('profile = "example"','profile = "../bad"'),
+        re.sub(r'project = "[^"]+"', 'project = "../bad"', original),
         original.replace('appVersion = 1','appVersion = 1, continueCommand = (argv = ["/bin/native"])'),
         original.replace('worker = (','unknownField = true, worker = ('),
     ]:
@@ -66,10 +68,11 @@ with tempfile.TemporaryDirectory() as temp:
     config.write_text(original)
     # Explicit entrypoints continue to work without project config.
     run('build','--entry',str(project/'src/worker.ts'),'--output',str(base/'explicit.js'))
-    # A project-relative compiler path works even when called from a subdirectory.
-    compiler=project/'tools/esbuild';compiler.parent.mkdir();compiler.symlink_to(root/'build/tools/esbuild')
-    config.write_text(original.replace('executable = "esbuild"','executable = "./tools/esbuild"'))
-    del env['SPKI_ESBUILD']
+    # The embedded compiler ignores obsolete external tool environment settings.
+    env['SPKI_ESBUILD']='/does/not/exist'
+    env['CAPNP']='/does/not/exist'
+    env['PATH']='/no-host-tools'
+    run('init', str(base/'no-host-tools'))
     run('build',cwd=project/'src')
     # CLI override wins without changing the configured profile.
     assert 'no readable credential' in run('auth','status',cwd=project,ok=False).stderr

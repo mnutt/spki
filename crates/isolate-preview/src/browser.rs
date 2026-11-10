@@ -29,7 +29,7 @@ pub fn module(path: &str) -> Option<&'static str> {
     MODULES
         .get_or_init(|| {
             let modules: std::collections::BTreeMap<String, String> =
-                serde_json::from_str(include_str!("../sdk/modules.json"))
+                serde_json::from_str(crate::SDK_MODULES_JSON)
                     .expect("vendored SDK modules");
             modules
                 .into_iter()

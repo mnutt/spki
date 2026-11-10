@@ -10,12 +10,24 @@ install packages on Sandstorm or publish GitHub Releases.
 
 Native Windows is not supported yet: credential permissions, filesystem metadata,
 and the preview runtime use Unix APIs. Use the Linux build under WSL. The CLI
-requires `capnp` and esbuild 0.25.12 on PATH for project compilation. Schema
-bindings also require Node.js and a checkout of `tools/schema-compiler`: run
-`npm ci --prefix tools/schema-compiler`, then set `SPKI_SCHEMA_COMPILER` to the
-absolute path of its `compile.mjs`. The pinned isolate host and packaged apps remain
+includes Rolldown 1.3.1 and Lightning CSS; no bundler executable is needed. It
+includes the pure Rust fs-capnpc schema compiler (pinned in Cargo.lock). Binding
+generation runs inside the binary using QuickJS and Oxc; capnp, Node.js, npm,
+`CAPNP`, and `SPKI_SCHEMA_COMPILER` are no longer needed. The pinned isolate host and packaged apps remain
 Linux x86_64 regardless of the CLI's host platform. Linux CLI builds require glibc
 compatible with Ubuntu 24.04.
+
+Existing projects using esbuild should replace their `compiler` setting with
+`compiler = (name = "rolldown", version = "1.3.1")`. The `--esbuild` option has
+been removed; `SPKI_ESBUILD` is no longer used. Bundles will change, so the first
+deployment after migration creates a new revision.
+
+The embedded schema generator is checked in under `crates/spki/schema-compiler`,
+with its upstream license and hashes. Ordinary Cargo builds need no Node tools.
+To regenerate it, maintainers run `npm ci --prefix tools/schema-compiler` and
+`python3 tools/schema-compiler/generate-embedded.py`. The optional differential
+test, `python3 scripts/check-schema-engine.py`, uses Node only to compare against
+the previous generator; it runs the new CLI with no Node on PATH.
 
 ## SPK signing
 
@@ -30,6 +42,19 @@ As in Davros, release signing is separate. `v*` tags require the secret
 `.sandstorm/sandstorm-pkgdef.capnp`. Missing release keys fail the build. Bump
 `appVersion` and `appMarketingVersion` in that file before tagging a release;
 the workflow preserves them. Never commit keyrings. Fork PRs need no secrets.
+
+The schema compiler is linked into both the CLI and Cargo build scripts; normal
+builds do not invoke a system `capnp`. Maintainers can compare compiled schema
+nodes, project constants, and manifests against an installed official compiler:
+
+```sh
+cargo test -p spki capnp_compiler::tests -- --ignored
+python3 scripts/check-schema-engine.py
+```
+
+The second check also requires the Node-based reference generator dependencies
+(`npm ci --prefix tools/schema-compiler`); the CLI under test runs with no host
+tools on PATH. These reference tools are test-only dependencies.
 
 ## Native previewer packaging
 

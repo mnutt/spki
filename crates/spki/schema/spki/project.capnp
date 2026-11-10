@@ -30,6 +30,10 @@ struct Project {
   struct Ui { entrypoints @0 :List(Text); }
   struct Worker { entrypoint @0 :Text; }
   struct Runtime { release @0 :Text; hostSha256 @1 :Text; }
-  struct Compiler { version @0 :Text; executable @1 :Text = "esbuild"; }
-  struct Preview { profile @0 :Text = "default"; }
+  struct Compiler { version @0 :Text; name @1 :Text = "rolldown"; }
+  struct Preview {
+    profile @0 :Text = "default";
+    # Stable workspace project ID. Empty retains the legacy single-project deployment.
+    project @1 :Text;
+  }
 }

@@ -10,6 +10,7 @@ use std::{
 };
 
 pub struct Controller {
+    pub project_id: String,
     host: Rc<Host>,
     root: PathBuf,
     current: RefCell<(String, Rc<Runtime>)>,
@@ -31,8 +32,8 @@ pub fn revision(source: &[u8]) -> String {
     for data in [
         crate::HOST_SHA256.as_bytes(),
         b"2026-06-10",
-        b"spki-native-bindings-v1-http-streaming-v1",
-        include_bytes!("../sdk/modules.json"),
+        b"spki-workspace-v1",
+        crate::SDK_MODULES_JSON.as_bytes(),
         include_bytes!("../sdk/entry.js"),
         include_bytes!("../browser/client.js"),
         source,
@@ -48,20 +49,29 @@ impl Controller {
         initial: &[u8],
         root: PathBuf,
     ) -> Result<Rc<Self>> {
-        Self::start_mode(stream, initial, root, true).await
+        Self::start_mode(stream, initial, root, true, String::new()).await
     }
     pub async fn start_packaged(
         stream: tokio::net::UnixStream,
         initial: &[u8],
         root: PathBuf,
     ) -> Result<Rc<Self>> {
-        Self::start_mode(stream, initial, root, false).await
+        Self::start_mode(stream, initial, root, false, String::new()).await
+    }
+    pub async fn start_project(
+        stream: tokio::net::UnixStream,
+        initial: &[u8],
+        root: PathBuf,
+        project_id: String,
+    ) -> Result<Rc<Self>> {
+        Self::start_mode(stream, initial, root, true, project_id).await
     }
     async fn start_mode(
         stream: tokio::net::UnixStream,
         initial: &[u8],
         root: PathBuf,
         preview: bool,
+        project_id: String,
     ) -> Result<Rc<Self>> {
         let read_root = root.clone();
         let saved = crate::disk::run(move || {
@@ -86,6 +96,7 @@ impl Controller {
         let mut guard = Candidate(Some(runtime.clone()));
         runtime.validate().await?;
         let controller = Rc::new(Self {
+            project_id,
             host,
             root,
             current: RefCell::new((revision(&source), runtime)),

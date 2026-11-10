@@ -6,7 +6,7 @@ work=pathlib.Path(tempfile.mkdtemp(prefix='bindings-pack-',dir=root/'build'))
 project=work/'project'
 shutil.copytree(root/'examples/service-binding', project, ignore=shutil.ignore_patterns('dist','.spki'))
 cli=root/'target/debug/spki'
-env=dict(os.environ,SPKI_ESBUILD=str(root/'build/tools/esbuild'))
+env=dict(os.environ)
 def run(*args,ok=True):
     r=subprocess.run([str(a) for a in args],env=env,capture_output=True,text=True,timeout=300)
     assert (r.returncode==0)==ok,(args,r.stdout,r.stderr)

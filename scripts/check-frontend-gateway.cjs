@@ -25,7 +25,7 @@ function request(webkey, route) {
 }
 (async()=>{
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'spki-gateway-'));
-  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config'),SPKI_ESBUILD:path.join(root,'build/tools/esbuild')};
+  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config')};
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',args:['--host-resolver-rules=MAP *.local.sandstorm.io 127.0.0.1, MAP local.sandstorm.io 127.0.0.1','--no-proxy-server']});
   const context = await browser.newContext();
   const page = await context.newPage();page.setDefaultTimeout(60000);
@@ -113,7 +113,8 @@ function request(webkey, route) {
     frontendText=frontendText.replace('  compatibilityDate', '  ui = (entrypoints = ["ui/main.ts"]),\n  assets = ["public"],\n  schemas = ["counter.capnp"],\n  compatibilityDate');
     fs.writeFileSync(frontendConfig, frontendText);
     cli(['--project',projectDir,'dev','--once']);
-    await frame.goto(new URL('/',frame.url()).href);
+    const workspaceProject=frontendText.match(/project = "([^"]+)"/)[1];
+    frame=await require('./workspace-frame.cjs')(frame,workspaceProject);
     try { await frame.locator('output').filter({hasText:'0'}).waitFor({timeout:25000}); } catch(error) { console.log('frame:',await frame.locator('body').innerText()); console.log('handoff:', await frame.evaluate(()=>({hasHandoff:!!window.handoff, hasCounter:!!window.counter}))); throw error; }
     await frame.getByRole('button',{name:'Increment',exact:true}).click();
     await frame.locator('output').filter({hasText:'1'}).waitFor();
@@ -166,9 +167,10 @@ function request(webkey, route) {
       let other;
       for(let i=0;i<100;i++) {
         other=second.frames().find(f=>f.url().includes('.local.sandstorm.io') && f!==second.mainFrame());
-        if(other && await other.locator('output').count()) break;
+        if(other && await other.locator('body').count()) break;
         await second.waitForTimeout(100);
       }
+      other=await require('./workspace-frame.cjs')(other,workspaceProject);
       await other.locator('output').filter({hasText:'6'}).waitFor({timeout:15000});
       const sessionA=await frame.evaluate(async()=>(await application.session()).id);
       const sessionB=await other.evaluate(async()=>{

@@ -10,7 +10,7 @@ root=Path(__file__).resolve().parent.parent
 resume=len(sys.argv)>1
 work=Path(sys.argv[1]).resolve() if resume else Path(tempfile.mkdtemp(prefix='native-pack-',dir=root/'build'))
 cli=root/'target/debug/spki'
-env=dict(os.environ,SPKI_ESBUILD=str(root/'build/tools/esbuild'),XDG_CONFIG_HOME=str(work/'credentials'))
+env=dict(os.environ,XDG_CONFIG_HOME=str(work/'credentials'))
 def run(*args,ok=True):
     result=subprocess.run([str(a) for a in args],env=env,capture_output=True,text=True,timeout=240)
     assert (result.returncode==0)==ok,(args,result.stdout,result.stderr)

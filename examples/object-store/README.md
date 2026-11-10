@@ -6,7 +6,7 @@ From the repository root, after building the CLI and fetching its pinned tools:
 
 ```sh
 target/debug/spki --project examples/object-store auth
-target/debug/spki --project examples/object-store dev --esbuild "$PWD/build/tools/esbuild"
+target/debug/spki --project examples/object-store dev
 ```
 
 Use a separate Preview grain for each example. Credentials are stored locally under the `object-store` profile, never in this directory. To compile without a grain, replace `dev` with `build`. Generated output goes to `dist/`.

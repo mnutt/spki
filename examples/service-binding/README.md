@@ -18,7 +18,7 @@ From the repository root:
 
 ```sh
 target/debug/spki --project examples/service-binding auth
-target/debug/spki --project examples/service-binding dev --esbuild "$PWD/build/tools/esbuild"
+target/debug/spki --project examples/service-binding dev
 ```
 
 Editing `payload.bin` or the binding declarations triggers a new deployment.

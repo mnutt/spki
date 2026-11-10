@@ -1,7 +1,8 @@
 # SPKI examples
 
 Runnable standalone projects live directly under this directory. Each has a
-`sandstorm-pkgdef.capnp` and a separate local credential profile. The imported
+`sandstorm-pkgdef.capnp` and a distinct workspace project ID. They share the
+`default` local credential profile. The imported
 examples come from Sandstorm's `isolates-rebased` branch; `upstream.json` records
 the source commit and original file hashes. No Sandstorm checkout is needed to
 build or run them. Upstream signing keys and generated worker bundles are omitted.
@@ -24,23 +25,55 @@ build or run them. Upstream signing keys and generated worker bundles are omitte
 
 ## Run an example
 
-Requires Rust, Node.js/npm, and the Cap’n Proto `capnp` compiler.
+Requires Rust to build `spki`. Schema compilation, binding generation, and bundling
+are embedded; capnp, Node.js, and npm are not required to build examples.
 From the repository root:
 
 ```sh
 cargo build --locked --workspace
-python3 scripts/fetch-esbuild.py
-npm ci --prefix tools/schema-compiler
-# Create a Preview grain, then paste its Developer webkey when prompted:
-target/debug/spki --project examples/counter auth
-target/debug/spki --project examples/counter dev --esbuild "$PWD/build/tools/esbuild"
+# Create one Preview grain, then paste its Developer webkey once:
+target/debug/spki auth
+target/debug/spki --project examples/counter dev
 ```
 
-Use a separate Preview grain for each example. Replace `counter` with another
-runnable directory name. The Preview installation must match this CLI's runtime
-and SDK; examples do not install or upgrade Preview automatically. `dev` bundles
-and deploys the example, then watches for edits. `build` compiles offline instead.
-Generated bundles go to each example's ignored `dist/` directory.
+The first `dev` creates that project inside your Preview workspace. Further
+projects use the same saved credential. Open `/__spki/workspace` inside the grain
+and select a project; SPKI also prints its opening path. A persistent toolbar
+provides a project selector and an app-only **Reload** button. The app runs in
+an iframe at `/`, preserving absolute and relative URLs. Each browser session
+has its own selection, so separate Sandstorm tabs can preview different projects.
+Sandstorm refreshes preserve the selected project; apps using `setPath` also
+preserve their current route. The shell relays Powerbox and other standard
+Sandstorm messages from the app frame. Apps that explicitly pin their parent
+message origin must account for this same-origin workspace frame.
+
+Each project has its own worker host process, storage directory, deployment
+revision, native RPC state, and captured logs. Replacing one project does not
+replace the others. `dev` shows only that project's logs. Projects load on demand
+after restart; this first implementation permits up to 16 projects per workspace.
+They share the grain's Sandstorm permissions and may share browser-origin state,
+so use a workspace for projects you trust together. It is not a security boundary
+between applications.
+
+New `spki init` projects use the default profile and receive a stable project ID.
+To opt an existing project into the workspace, change its configuration to:
+
+```capnp
+preview = (profile = "default", project = "my-project")
+```
+
+The project ID selects its persistent code and data; changing it selects a
+different project. Do not reuse an ID for unrelated applications. Existing
+configurations without `preview.project` retain the legacy single-project mode,
+and existing grain data remains available through the workspace's **Open legacy
+preview** link. Opting into a named project starts with separate storage; it does
+not move legacy data. Multiple workspaces can still use separate auth profiles.
+
+Replace `counter` with another example name. The Preview installation must match
+this CLI's runtime and SDK; examples do not install or upgrade Preview
+automatically. `dev` bundles and deploys the example, then watches for edits.
+`build` compiles offline. Generated bundles go to each example's ignored `dist/`
+directory. Production SPKs still contain one application, not a workspace.
 
 The TypeScript example also supports strict checking:
 
@@ -66,6 +99,7 @@ python3 scripts/check-examples.py
 # Build/verify a bindings SPK, without uploading:
 python3 scripts/check-bindings.py
 # Against the dedicated SPKI test VM with `spktool dev` running:
+node scripts/check-workspace-gateway.cjs /path/to/playwright
 node scripts/check-examples-gateway.cjs /path/to/playwright
 node scripts/check-powerbox-gateway.cjs /path/to/playwright
 ```

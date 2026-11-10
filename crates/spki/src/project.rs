@@ -4,7 +4,6 @@ use serde_json::Value;
 use std::{
     fs,
     path::{Path, PathBuf},
-    process::Command,
 };
 include!(concat!(env!("OUT_DIR"), "/schemas.rs"));
 const CONFIG: &str = "sandstorm-pkgdef.capnp";
@@ -43,12 +42,14 @@ struct Runtime {
 #[serde(deny_unknown_fields)]
 struct Compiler {
     version: String,
-    executable: String,
+    name: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Preview {
     profile: String,
+    #[serde(default)]
+    project: String,
 }
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -78,8 +79,8 @@ pub struct Settings {
     pub ui: Vec<PathBuf>,
     pub assets: Vec<PathBuf>,
     pub schemas: Vec<PathBuf>,
-    pub compiler: PathBuf,
     pub profile: String,
+    pub project: String,
 }
 pub fn discover(explicit: Option<&Path>) -> Result<Option<PathBuf>> {
     if let Some(path) = explicit {
@@ -102,26 +103,6 @@ pub fn discover(explicit: Option<&Path>) -> Result<Option<PathBuf>> {
     }
     Ok(None)
 }
-fn capnp() -> std::ffi::OsString {
-    std::env::var_os("CAPNP").unwrap_or_else(|| "capnp".into())
-}
-fn eval(file: &Path, imports: &Path, constant: &str) -> Result<Value> {
-    let output = Command::new(capnp())
-        .args(["eval", "--no-standard-import", "-ojson"])
-        .arg(format!("-I{}", imports.display()))
-        .arg(file)
-        .arg(constant)
-        .output()
-        .context(
-            "install the standard capnp compiler or set CAPNP to evaluate project configuration",
-        )?;
-    ensure!(
-        output.status.success(),
-        "invalid project configuration: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    serde_json::from_slice(&output.stdout).context("invalid Cap'n Proto JSON output")
-}
 pub fn read(file: &Path) -> Result<Settings> {
     let imports = tempfile::tempdir()?;
     for (name, source) in SCHEMAS {
@@ -129,7 +110,8 @@ pub fn read(file: &Path) -> Result<Settings> {
         fs::create_dir_all(path.parent().unwrap())?;
         fs::write(path, source)?;
     }
-    let project: Project = serde_json::from_value(eval(file, imports.path(), "spki")?)
+    let config = crate::capnp_compiler::Configuration::read(file, imports.path())?;
+    let project: Project = serde_json::from_value(config.project()?)
         .context("invalid spki project fields")?;
     ensure!(
         project.format_version == 1,
@@ -144,13 +126,15 @@ pub fn read(file: &Path) -> Result<Settings> {
             && project.runtime.host_sha256 == isolate_preview::HOST_SHA256,
         "project runtime differs from this CLI"
     );
-    let pin: Value = serde_json::from_str(include_str!("../../../runtime/esbuild.json"))?;
     ensure!(
-        project.compiler.version == pin["version"].as_str().unwrap(),
-        "project compiler version differs from this CLI"
+        project.compiler.name == "rolldown" && project.compiler.version == crate::compiler::VERSION,
+        "project compiler differs from this CLI; use compiler = (name = \"rolldown\", version = \"1.3.1\")"
     );
     super::store_path(&project.preview.profile)?;
-    let pkg = eval(file, imports.path(), "pkgdef")?;
+    if !project.preview.project.is_empty() {
+        isolate_preview::workspace::validate_id(&project.preview.project)?;
+    }
+    let pkg = config.package()?;
     ensure!(
         pkg["manifest"]["appTitle"]["defaultText"]
             .as_str()
@@ -186,16 +170,6 @@ pub fn read(file: &Path) -> Result<Settings> {
         "worker.entrypoint must be a project-relative path without '..'"
     );
     let root = file.parent().unwrap();
-    let compiler = PathBuf::from(project.compiler.executable);
-    ensure!(
-        !compiler.as_os_str().is_empty(),
-        "compiler.executable must not be empty"
-    );
-    let compiler = if !compiler.is_absolute() && compiler.components().count() > 1 {
-        root.join(compiler)
-    } else {
-        compiler
-    };
     let relative = |value: String| -> Result<PathBuf> {
         let path = PathBuf::from(value);
         ensure!(
@@ -227,14 +201,13 @@ pub fn read(file: &Path) -> Result<Settings> {
             .map(relative)
             .collect::<Result<_>>()?,
         entry: root.join(entry),
-        compiler,
         profile: project.preview.profile,
+        project: project.preview.project,
     })
 }
 pub fn resolve(
     file: Option<&Path>,
     entry: Option<&Path>,
-    compiler: Option<&Path>,
     profile: Option<&str>,
 ) -> Result<Settings> {
     let mut settings = if let Some(file) = file {
@@ -249,17 +222,12 @@ pub fn resolve(
             entry: entry
                 .context("no project configuration; run spki init or specify --entry")?
                 .to_owned(),
-            compiler: "esbuild".into(),
             profile: "default".into(),
+            project: String::new(),
         }
     };
     if let Some(entry) = entry {
         settings.entry = entry.to_owned();
-    }
-    if let Some(path) = compiler {
-        settings.compiler = path.to_owned();
-    } else if let Some(path) = std::env::var_os("SPKI_ESBUILD") {
-        settings.compiler = path.into();
     }
     if let Some(profile) = profile {
         settings.profile = profile.to_owned();
@@ -281,16 +249,25 @@ pub fn init(target: &Path, profile: &str) -> Result<()> {
         .context("cannot initialize filesystem root")?;
     ensure!(parent.is_dir(), "parent directory must already exist");
     let temporary = tempfile::tempdir_in(parent)?;
-    let id = Command::new(capnp())
-        .arg("id")
-        .output()
-        .context("install capnp or set CAPNP before initializing a project")?;
-    let id = std::str::from_utf8(&id.stdout)?.trim();
-    ensure!(
-        id.starts_with("@0x") && id.len() == 19 && id[3..].bytes().all(|b| b.is_ascii_hexdigit()),
-        "capnp returned an invalid schema ID"
-    );
-    let version: Value = serde_json::from_str(include_str!("../../../runtime/esbuild.json"))?;
+    let mut random = [0u8; 8];
+    getrandom::fill(&mut random).context("generate schema ID")?;
+    let id = format!("@0x{:016x}", u64::from_le_bytes(random) | (1 << 63));
+    let version = crate::compiler::VERSION;
+    let name: String = target
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .take(40)
+        .collect();
+    let project_id = format!("{}-{}", name, &id[3..11]);
     let config = format!(
         r#"{id};
 using Spk = import "/sandstorm/package.capnp";
@@ -308,12 +285,12 @@ const spki :Spki.Project = (
   worker = (entrypoint = "src/worker.ts"),
   compatibilityDate = "2026-06-10", compatibilityFlags = [],
   runtime = (release = "0.1.2", hostSha256 = "{host}"),
-  compiler = (version = "{version}", executable = "esbuild"),
-  preview = (profile = "{profile}")
+  compiler = (version = "{version}", name = "rolldown"),
+  preview = (profile = "{profile}", project = "{project_id}")
 );
 "#,
         host = isolate_preview::HOST_SHA256,
-        version = version["version"].as_str().unwrap()
+        version = version
     );
     fs::write(temporary.path().join(CONFIG), config)?;
     fs::create_dir(temporary.path().join("src"))?;
@@ -339,7 +316,7 @@ const spki :Spki.Project = (
         fs::rename(temporary.path(), &target)?;
     }
     println!(
-        "Created {}\nNext: spki auth, then spki dev.\nFor local HTTP previews, use spki auth --allow-local-http.\nRequires capnp and pinned esbuild on PATH (or CAPNP / SPKI_ESBUILD).",
+        "Created {}\nNext: spki auth, then spki dev.\nFor local HTTP previews, use spki auth --allow-local-http.\nThe schema compiler and Rolldown bundler are built in.",
         target.display()
     );
     Ok(())
@@ -392,19 +369,8 @@ pub fn package_metadata(file: &Path) -> Result<(Value, Vec<u8>)> {
         fs::create_dir_all(path.parent().unwrap())?;
         fs::write(path, source)?;
     }
-    let pkg = eval(file, imports.path(), "pkgdef")?;
-    let output = Command::new(capnp())
-        .args(["eval", "--no-standard-import", "-b"])
-        .arg(format!("-I{}", imports.path().display()))
-        .arg(file)
-        .arg("pkgdef.manifest")
-        .output()?;
-    ensure!(
-        output.status.success(),
-        "could not evaluate manifest: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok((pkg, output.stdout))
+    let config = crate::capnp_compiler::Configuration::read(file, imports.path())?;
+    Ok((config.package()?, config.manifest()?))
 }
 
 impl Settings {

@@ -1,10 +1,10 @@
 @0xc36c7cc9a1dabade;
 using Spk = import "/sandstorm/package.capnp";
 using Spki = import "/spki/project.capnp";
-# From the repository root, after building spki and fetching esbuild:
+# From the repository root, after building spki:
 #   target/debug/spki --project examples/storage-counter auth
-#   target/debug/spki --project examples/storage-counter dev --esbuild "$PWD/build/tools/esbuild"
-# Uses its own local credential profile; no credentials are stored in this example.
+#   target/debug/spki --project examples/storage-counter dev
+# Uses the shared default workspace profile; no credentials are stored in this example.
 # Authoring template. Set id from spki keygen before packaging; native commands are generated.
 const pkgdef :Spk.PackageDefinition = (
   manifest = (
@@ -19,6 +19,6 @@ const spki :Spki.Project = (
   schemas = [],
   compatibilityDate = "2026-06-10", compatibilityFlags = [],
   runtime = (release = "0.1.2", hostSha256 = "94b04f0ed5ad0f3ff862dcadd1b7edfe6cad1717587a60b7d8e6775541b538b1"),
-  compiler = (version = "0.25.12", executable = "esbuild"),
-  preview = (profile = "storage-counter")
+  compiler = (version = "1.3.1", name = "rolldown"),
+  preview = (profile = "default", project = "storage-counter")
 );

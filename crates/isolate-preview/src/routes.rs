@@ -61,6 +61,7 @@ fn scoped_path(prefix: &str, path: &str) -> capnp::Result<String> {
 }
 
 struct Route {
+    project_id: String,
     controller: Weak<Controller>,
     native: String,
     prefix: String,
@@ -78,6 +79,10 @@ pub(crate) fn create(
     let prefix = prefix(path)?;
     scoped_path(&prefix, "")?;
     let cap: route_session::Client = capnp_rpc::new_client(Route {
+        project_id: controller
+            .upgrade()
+            .map(|c| c.project_id.clone())
+            .unwrap_or_default(),
         controller,
         native: native.into(),
         prefix,
@@ -90,8 +95,20 @@ pub(crate) fn restore(
     id: capnp::any_pointer::Reader<'_>,
 ) -> capnp::Result<Client> {
     let id = id.get_as::<route_object_id::Reader>()?;
-    if id.get_format()?.to_str()? != "spki-route-v1" {
+    if !matches!(
+        id.get_format()?.to_str()?,
+        "spki-route-v1" | "spki-route-v2"
+    ) {
         return Err(invalid("unknown persistent object"));
+    }
+    let project_id = id.get_project_id()?.to_str()?;
+    if controller
+        .upgrade()
+        .map(|c| c.project_id.clone())
+        .unwrap_or_default()
+        != project_id
+    {
+        return Err(invalid("persistent route belongs to another project"));
     }
     create(
         controller,
@@ -117,7 +134,12 @@ impl app_persistent::Server<capnp::any_pointer::Owned> for Route {
             .reborrow()
             .get_object_id()?
             .init_as::<route_object_id::Builder>();
-        id.set_format("spki-route-v1");
+        id.set_format(if self.project_id.is_empty() {
+            "spki-route-v1"
+        } else {
+            "spki-route-v2"
+        });
+        id.set_project_id(&self.project_id);
         id.set_native_interface(&self.native);
         id.set_path_prefix(&self.prefix);
         result

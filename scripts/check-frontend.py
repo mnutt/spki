@@ -4,7 +4,7 @@ import os, pathlib, shutil, subprocess, tempfile
 root = pathlib.Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory() as temp:
     project = pathlib.Path(temp)/'project'
-    env = dict(os.environ, SPKI_ESBUILD=str(root/'build/tools/esbuild'))
+    env = dict(os.environ)
     def run(*args, ok=True):
         result = subprocess.run([str(root/'target/debug/spki'), *args], env=env, capture_output=True, text=True)
         assert (result.returncode == 0) == ok, result.stderr

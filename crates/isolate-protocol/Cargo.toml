@@ -7,3 +7,4 @@ license.workspace = true
 capnp.workspace = true
 [build-dependencies]
 capnpc.workspace = true
+capnp-compiler.workspace = true

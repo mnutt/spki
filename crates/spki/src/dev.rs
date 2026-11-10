@@ -124,14 +124,16 @@ fn config_changed(before: &Snapshot, after: &Snapshot) -> bool {
 pub(crate) fn run(
     config: Option<&Path>,
     entry: Option<&Path>,
-    esbuild: Option<&Path>,
     profile: Option<&str>,
     once: bool,
 ) -> Result<()> {
-    let mut settings = project::resolve(config, entry, esbuild, profile)?;
-    let mut compiler_path = settings.compiler.clone();
-    let mut compiler = Compiler::new(compiler_path.clone())?;
-    let api = Api::new(load(&store_path(&settings.profile)?)?)?;
+    let mut settings = project::resolve(config, entry, profile)?;
+    let compiler = Compiler::new()?;
+    let mut api = Api::new(load(&store_path(&settings.profile)?)?)?;
+    if !settings.project.is_empty() {
+        api.select_project(&settings.project)?;
+    }
+    let connected_project = settings.project.clone();
     let connected_profile = settings.profile.clone();
     let info = api.info()?;
     ensure!(
@@ -172,13 +174,13 @@ pub(crate) fn run(
         let result = (|| -> Result<()> {
             if refresh_config {
                 config_valid = false;
-                settings = project::resolve(config, entry, esbuild, profile)?;
+                settings = project::resolve(config, entry, profile)?;
                 watch.inputs.extend(settings.binding_paths()?);
                 config_valid = true;
             }
             ensure!(
-                settings.profile == connected_profile,
-                "preview profile changed; restart spki dev to reconnect"
+                settings.profile == connected_profile && settings.project == connected_project,
+                "preview profile or project changed; restart spki dev to reconnect"
             );
             watch.roots.insert(
                 std::path::absolute(&settings.entry)?
@@ -187,10 +189,6 @@ pub(crate) fn run(
                     .to_owned(),
             );
             watch.assets = settings.assets.clone();
-            if settings.compiler != compiler_path {
-                compiler = Compiler::new(settings.compiler.clone())?;
-                compiler_path = settings.compiler.clone();
-            }
             let code = compiler.build_project(&settings, limit)?;
             if !once {
                 std::thread::sleep(Duration::from_millis(200));

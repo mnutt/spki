@@ -3,6 +3,19 @@ set -euo pipefail
 cd /opt/app
 package_root=${SPKI_PACKAGE_ROOT:-/opt/app/build/grain-root}
 probe_dir=$(mktemp -d /tmp/spki-grain.XXXXXX)
+# The host-built CLI may require newer glibc than the guest. Use the matching
+# loader/libraries already staged with the host-built Preview, without changing
+# the guest system libraries. Keep an override for guest-native CLI builds.
+if [[ -z "${SPKI_TEST_BINARY:-}" ]]; then
+    cat > "$probe_dir/spki" <<'EOF'
+#!/bin/sh
+exec /opt/app/build/grain-root/lib64/ld-linux-x86-64.so.2 \
+    --library-path /opt/app/build/grain-root/usr/lib:/opt/app/build/grain-root/lib \
+    /opt/app/target/debug/spki "$@"
+EOF
+    chmod +x "$probe_dir/spki"
+    export SPKI_TEST_BINARY="$probe_dir/spki"
+fi
 ln -s /opt/sandstorm/latest/sandstorm "$probe_dir/sandstorm-supervisor"
 supervisor_pid=
 cleanup() {

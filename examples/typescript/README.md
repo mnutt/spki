@@ -6,7 +6,7 @@ From the repository root, after building the CLI and fetching its pinned tools:
 
 ```sh
 target/debug/spki --project examples/typescript auth
-target/debug/spki --project examples/typescript dev --esbuild "$PWD/build/tools/esbuild"
+target/debug/spki --project examples/typescript dev
 ```
 
 Use a separate Preview grain for each example. Credentials are stored locally under the `typescript` profile, never in this directory. To compile without a grain, replace `dev` with `build`. Generated output goes to `dist/`.

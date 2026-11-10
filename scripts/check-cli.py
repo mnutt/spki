@@ -15,7 +15,7 @@ import time
 
 socket_path = sys.argv[1]
 probe = ['/opt/app/target/debug/grain-smoke', socket_path]
-cli = '/opt/app/target/debug/spki'
+cli = os.environ.get('SPKI_TEST_BINARY', '/opt/app/target/debug/spki')
 token = 'test-secret-never-print-9c8b'
 state = {'redirect': False, 'drop': False, 'mismatch': False, 'posts': 0}
 
@@ -85,7 +85,7 @@ def wait_for(predicate):
 
 with tempfile.TemporaryDirectory() as temp:
     root = pathlib.Path(temp)
-    env = dict(os.environ, XDG_CONFIG_HOME=str(root / 'config'), SPKI_ESBUILD='/opt/app/build/tools/esbuild')
+    env = dict(os.environ, XDG_CONFIG_HOME=str(root / 'config'))
     worker = root / 'worker.js'
     worker.write_text(initial)
     def run(*args, input=None, ok=True):
@@ -162,33 +162,35 @@ with tempfile.TemporaryDirectory() as temp:
             wait_for(lambda: current() != good)
         finally:
             watcher.terminate(); watcher.wait(timeout=5)
-    # A project watcher must remain idle without spawning esbuild or evaluating Cap'n Proto.
+    # Project watching works with no external compiler and invalidates configuration.
     import shlex, shutil
     project = root/'watch-project'
     run('init',str(project))
+    # This legacy transport facade exercises the unscoped deployment API.
+    import re
+    config = project/'sandstorm-pkgdef.capnp'
+    config.write_text(re.sub(r', project = "[^"]+"', '', config.read_text()))
     original_env = dict(env)
-    counts = []
-    for name, executable, variable in [('compiler',env['SPKI_ESBUILD'],'SPKI_ESBUILD'),('capnp',shutil.which('capnp'),'CAPNP')]:
-        count = root/(name+'.calls')
-        wrapper = root/(name+'-wrapper')
-        wrapper.write_text("#!/bin/sh\nprintf 'call\\n' >> " + shlex.quote(str(count)) + "\nexec " + shlex.quote(executable) + ' "$@"\n')
-        wrapper.chmod(0o755)
-        env[variable] = str(wrapper)
-        counts.append(count)
+    count = root/'capnp.calls'
+    wrapper = root/'capnp-wrapper'
+    wrapper.write_text("#!/bin/sh\nprintf 'call\\n' >> " + shlex.quote(str(count)) + "\nexit 1\n")
+    wrapper.chmod(0o755)
+    env['CAPNP'] = str(wrapper)
+    (project/'src/other.ts').write_text((project/'src/worker.ts').read_text() + "\nconsole.log('changed configuration');\n")
     with (root/'idle.log').open('w+') as log:
         watcher = subprocess.Popen([cli,'dev'],cwd=project,env=env,stdout=log,stderr=log,text=True)
         try:
             wait_for(lambda: 'Live revision' in (root/'idle.log').read_text())
-            before_counts = [path.read_text() for path in counts]
             time.sleep(1.2)
-            assert [path.read_text() for path in counts] == before_counts, 'idle watcher spawned tools'
+            assert not count.exists(), 'watcher spawned external compiler'
             before_revision = current()
             (project/'src/greeting.ts').write_text("export const greeting = 'changed in cached project';")
             wait_for(lambda: current() != before_revision)
-            assert counts[1].read_text() == before_counts[1], 'source edit reevaluated unchanged configuration'
+            assert not count.exists(), 'source edit spawned external compiler'
+            before_revision = current()
             config = project/'sandstorm-pkgdef.capnp'
-            config.write_text(config.read_text().replace('My isolate','Updated title'))
-            wait_for(lambda: counts[1].read_text() != before_counts[1])
+            config.write_text(config.read_text().replace('src/worker.ts','src/other.ts'))
+            wait_for(lambda: current() != before_revision)
             time.sleep(0.5)
             good_config = config.read_text()
             good_revision = current()
@@ -202,7 +204,7 @@ with tempfile.TemporaryDirectory() as temp:
         finally:
             watcher.terminate(); watcher.wait(timeout=5)
     env.clear(); env.update(original_env)
-    print('PASS: idle watcher spawns no tools, config caching and invalidation')
+    print('PASS: watcher needs no external compiler, configuration invalidation and recovery')
     worker.write_text(initial)
     run('dev', '--entry', str(worker), '--once')
     run('logout')

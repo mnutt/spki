@@ -25,12 +25,14 @@ function request(webkey, route) {
 }
 (async()=>{
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'spki-powerbox-'));
-  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config'),SPKI_ESBUILD:path.join(root,'build/tools/esbuild')};
+  const env = {...process.env,XDG_CONFIG_HOME:path.join(directory,'config')};
   const browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH || '/usr/bin/chromium',args:['--host-resolver-rules=MAP *.local.sandstorm.io 127.0.0.1, MAP local.sandstorm.io 127.0.0.1','--no-proxy-server']});
   const context = await browser.newContext();
   const page = await context.newPage();page.setDefaultTimeout(60000);
   page.on('pageerror', error=>console.error('browser error:',redact(String(error))));
   let grainId;
+  let activeProject="";
+  const openProject=async frame=>activeProject ? require("./workspace-frame.cjs")(frame,activeProject) : frame;
   const label = `spki-powerbox-${Date.now()}`;
   const cli = (args,input,success=true)=>{
     const result=spawnSync(path.join(root,'target/debug/spki'),args,{env,input,encoding:'utf8',timeout:45000});
@@ -95,12 +97,13 @@ function request(webkey, route) {
     cli(['auth','status']);
     cli(['--profile','viewer','auth','--webkey-stdin','--allow-local-http'],viewer,false);
 
-    if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); }
+    if (await page.locator('form.newApiToken').isVisible()) { await page.reload(); frame=await appFrame(); frame=await openProject(frame); }
     const projectDir=path.join(directory,'powerbox');
     fs.cpSync(path.join(root,'examples/powerbox-http'),projectDir,{recursive:true,filter:p=>!p.split(path.sep).includes('dist')});
     cli(['--project',projectDir,'auth','--webkey-stdin','--allow-local-http'],developer);
     cli(['--project',projectDir,'dev','--once']);
-    await frame.goto(new URL('/',frame.url()).href);
+    activeProject=fs.readFileSync(path.join(projectDir,'sandstorm-pkgdef.capnp'),'utf8').match(/project = "([^"]+)"/)?.[1] || '';
+    frame=await openProject(frame);
     await frame.getByRole('button',{name:'Connect HTTP service'}).waitFor();
     progress('requesting a real HTTP capability through the Powerbox');
     await frame.getByRole('button',{name:'Connect HTTP service'}).click();
@@ -128,6 +131,7 @@ function request(webkey, route) {
         if(other && await other.locator('button').count()) break;
         await second.waitForTimeout(100);
       }
+      other=await openProject(other);
       assert(await other.evaluate(async(token)=>{
         const {ApiSession}=await import('/__sandstorm/capnp/sandstorm/api-session.capnp.js');
         const {claimBrowserNativeCapnpToken}=await import('/__sandstorm/native-capnp/client.js');
@@ -179,14 +183,15 @@ function request(webkey, route) {
       if (request.method === "POST" && url.pathname === "/claim") {`));
     cli(['--project',persistentDir,'auth','--webkey-stdin','--allow-local-http'],developer);
     cli(['--project',persistentDir,'dev','--once']);
-    await frame.goto(new URL('/',frame.url()).href);
+    activeProject=fs.readFileSync(path.join(persistentDir,'sandstorm-pkgdef.capnp'),'utf8').match(/project = "([^"]+)"/)?.[1] || '';
+    frame=await openProject(frame);
     await frame.getByRole('button',{name:'Connect API',exact:true}).click();
     await page.locator('.card-button[data-card-id="http-url-https://example.com"]').click();
     await frame.waitForFunction(()=>document.querySelector('.status')?.textContent.includes('Saved API'));
     assert((await frame.locator('pre').innerText()).includes('Example Domain'),await frame.locator('pre').innerText());
     progress('restarting grain and restoring saved API');
     await call('shutdownGrain',grainId);
-    await page.reload(); frame=await appFrame();
+    await page.reload(); frame=await appFrame(); frame=await openProject(frame);
     await frame.getByRole('button',{name:'Restore Saved API',exact:true}).click();
     await frame.waitForFunction(()=>document.querySelector('pre')?.textContent.includes('Example Domain'));
     assert(await frame.evaluate(()=>fetch('/test-revocation',{method:'POST'}).then(r=>r.json()).then(r=>r.rejected)),

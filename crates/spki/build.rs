@@ -14,12 +14,8 @@ fn main() {
     let mut files = Vec::new();
     walk(Path::new("schema"), &mut files);
     files.sort();
-    let mut command = capnpc::CompilerCommand::new();
+    let mut command = capnp_compiler::CompileCommand::new();
     command.src_prefix("schema").import_path("schema");
-    if let Ok(path) = env::var("CAPNP") {
-        command.capnp_executable(path);
-    }
-    println!("cargo:rerun-if-env-changed=CAPNP");
     let mut modules = String::new();
     for file in &files {
         if file.ends_with("c++.capnp") {
@@ -39,7 +35,11 @@ fn main() {
             .with_file_name(format!("{name}_capnp.rs"));
         modules.push_str(&format!("#[allow(clippy::all)] pub mod {name}_capnp {{ include!(concat!(env!(\"OUT_DIR\"), \"/{}\")); }}\n",relative.display()));
     }
-    command.run().expect("compile package schemas");
+    let request = command.run_bytes().expect("compile package schemas");
+    capnpc::codegen::CodeGenerationCommand::new()
+        .output_directory(env::var("OUT_DIR").unwrap())
+        .run(request.as_slice())
+        .expect("generate package bindings");
     let out = std::path::PathBuf::from(env::var("OUT_DIR").unwrap());
     let supervisor = out.join("sandstorm/supervisor_capnp.rs");
     let generated = fs::read_to_string(&supervisor).unwrap().replace(

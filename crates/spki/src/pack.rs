@@ -70,7 +70,7 @@ fn stage_runtime(root: &Path, stage: &Path) -> Result<()> {
         );
         let bytes = fs::read(&source)?;
         ensure!(
-            entry["sha256"].as_str() == Some(&hash(&bytes)),
+            entry["sha256"].as_str() == Some(hash(&bytes).as_str()),
             "runtime file hash mismatch: {name}"
         );
         if name == "bin/isolate-host" {
@@ -122,7 +122,6 @@ pub struct Options {
     pub runtime_root: PathBuf,
     pub keyring: PathBuf,
     pub app_id: Option<String>,
-    pub esbuild: Option<PathBuf>,
     pub target: String,
 }
 pub fn pack(file: &Path, options: Options) -> Result<()> {
@@ -134,7 +133,7 @@ pub fn pack(file: &Path, options: Options) -> Result<()> {
         !options.output.exists(),
         "output already exists; choose a fresh release filename"
     );
-    let settings = project::resolve(Some(file), None, options.esbuild.as_deref(), None)?;
+    let settings = project::resolve(Some(file), None, None)?;
     let (metadata, bytes) = project::package_metadata(file)?;
     let configured = metadata["id"].as_str().filter(|id| !id.is_empty());
     if let (Some(configured), Some(requested)) = (configured, options.app_id.as_deref()) {
@@ -144,8 +143,7 @@ pub fn pack(file: &Path, options: Options) -> Result<()> {
         "set pkgdef.id or --app-id; create a new signing identity explicitly with spki keygen",
     )?;
     let key = spk::identity(&options.keyring, id)?;
-    let code =
-        Compiler::new(settings.compiler.clone())?.build_project(&settings, 8 * 1024 * 1024)?;
+    let code = Compiler::new()?.build_project(&settings, 8 * 1024 * 1024)?;
     let mut input = bytes.as_slice();
     let reader = serialize::read_message_from_flat_slice(
         &mut input,

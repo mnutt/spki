@@ -14,6 +14,6 @@
     "sandstorm/supervisor.capnp": "a651a766ad172d661bf11a41356e2b5060b471a32820886b125e4f96ed9a66b0",
     "sandstorm/util.capnp": "b10a7142c705b21c64fae393ef1a1d738f64ee1945c28cac4af125341f31bbe0",
     "sandstorm/web-session.capnp": "0486c16bfcd04aa5238ffd45068a7663508edee24b0d425dd111abb7262db699",
-    "spki/project.capnp": "858c16b2b0553ee1a2537604f894d805d60e874aedd50a9ee2ec35e9cab6b77b"
+    "spki/project.capnp": "b1afdbfb6bf7b693ab5e76bf42c3440fa7cd48db033c8f798433a11c35e66639"
   }
 }

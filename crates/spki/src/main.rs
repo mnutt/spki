@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+mod capnp_compiler;
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 mod api;
 mod compiler;
@@ -6,6 +7,7 @@ mod credentials;
 mod dev;
 mod frontend;
 mod logs;
+mod schema_engine;
 mod schemas;
 use api::{Api, revision};
 use credentials::{load, parse_webkey, save, store_path};
@@ -24,7 +26,7 @@ use std::{
 #[derive(Parser)]
 #[command(
     version,
-    about = "Build and deploy TypeScript/JavaScript to an Isolate Preview grain"
+    about = "Build and deploy TypeScript/JavaScript projects to an Isolate Preview workspace"
 )]
 struct Args {
     #[arg(long, global = true)]
@@ -55,8 +57,6 @@ enum Command {
         keyring: Option<PathBuf>,
         #[arg(long)]
         app_id: Option<String>,
-        #[arg(long)]
-        esbuild: Option<PathBuf>,
         #[arg(long, default_value = "linux-x86_64")]
         target: String,
     },
@@ -85,9 +85,6 @@ enum Command {
         entry: Option<PathBuf>,
         #[arg(long)]
         once: bool,
-        /// Pinned esbuild executable (defaults to SPKI_ESBUILD or esbuild on PATH).
-        #[arg(long)]
-        esbuild: Option<PathBuf>,
     },
     /// Compile a worker locally without Preview auth. Uses the same compiler as dev.
     Build {
@@ -95,21 +92,11 @@ enum Command {
         entry: Option<PathBuf>,
         #[arg(long)]
         output: Option<PathBuf>,
-        #[arg(long)]
-        esbuild: Option<PathBuf>,
     },
 }
 #[derive(Subcommand)]
 enum AuthAction {
     Status,
-}
-fn source(path: &std::path::Path, limit: usize) -> Result<String> {
-    let mut bytes = Vec::new();
-    fs::File::open(path)?
-        .take(limit as u64 + 1)
-        .read_to_end(&mut bytes)?;
-    ensure!(bytes.len() <= limit, "source exceeds Preview limit");
-    String::from_utf8(bytes).context("source must be UTF-8 JavaScript")
 }
 fn run() -> Result<()> {
     let args = Args::parse();
@@ -146,7 +133,6 @@ fn run() -> Result<()> {
             runtime_root,
             keyring,
             app_id,
-            esbuild,
             target,
         } => {
             pack::pack(
@@ -158,7 +144,6 @@ fn run() -> Result<()> {
                     runtime_root,
                     keyring: spk::keyring(keyring)?,
                     app_id,
-                    esbuild,
                     target,
                 },
             )?;
@@ -185,11 +170,15 @@ fn run() -> Result<()> {
                     "auth status does not accept a webkey"
                 );
                 let info = Api::new(load(&path)?)?.info()?;
-                println!(
-                    "Profile {}: deployment access verified; revision {}",
-                    profile,
-                    &revision(&info.revision)?[..12]
-                );
+                if info.workspace {
+                    println!("Profile {}: workspace deployment access verified", profile);
+                } else {
+                    println!(
+                        "Profile {}: deployment access verified; revision {}",
+                        profile,
+                        &revision(&info.revision)?[..12]
+                    );
+                }
             } else {
                 let input = if webkey_stdin {
                     let mut input = String::new();
@@ -205,24 +194,15 @@ fn run() -> Result<()> {
                 api.info()?;
                 save(&path, &api.credential)?;
                 println!(
-                    "Saved deployment profile {}. Open the existing preview grain in Sandstorm.",
+                    "Saved deployment profile {}. Projects using this profile share the Preview workspace.",
                     profile
                 );
             }
         }
-        Command::Build {
-            entry,
-            output,
-            esbuild,
-        } => {
-            let settings = project::resolve(
-                config.as_deref(),
-                entry.as_deref(),
-                esbuild.as_deref(),
-                args.profile.as_deref(),
-            )?;
-            let code = compiler::Compiler::new(settings.compiler.clone())?
-                .build_project(&settings, 8 * 1024 * 1024)?;
+        Command::Build { entry, output } => {
+            let settings =
+                project::resolve(config.as_deref(), entry.as_deref(), args.profile.as_deref())?;
+            let code = compiler::Compiler::new()?.build_project(&settings, 8 * 1024 * 1024)?;
             let output = match output {
                 Some(output) => {
                     ensure!(
@@ -248,15 +228,10 @@ fn run() -> Result<()> {
             file.persist(&output)?;
             println!("Built {} bytes: {}", code.len(), output.display());
         }
-        Command::Dev {
-            entry,
-            once,
-            esbuild,
-        } => {
+        Command::Dev { entry, once } => {
             dev::run(
                 config.as_deref(),
                 entry.as_deref(),
-                esbuild.as_deref(),
                 args.profile.as_deref(),
                 once,
             )?;

@@ -8,7 +8,7 @@ From the repository root:
 
 ```sh
 target/debug/spki --project examples/api-powerbox auth
-target/debug/spki --project examples/api-powerbox dev --esbuild "$PWD/build/tools/esbuild"
+target/debug/spki --project examples/api-powerbox dev
 ```
 
 Click **Connect API**, select the HTTP provider, then try **Restore Saved API**

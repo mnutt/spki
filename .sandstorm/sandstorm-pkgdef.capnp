@@ -5,8 +5,8 @@ const pkgdef :Spk.PackageDefinition = (
   id = "vgsmnudpv4aup9cejg27p8cg029av8k3nr7h5yuduycjcz6hn49h",
   manifest = (
     appTitle = (defaultText = "Isolate Preview — Runtime Spike"),
-    appVersion = 1,
-    appMarketingVersion = (defaultText = "0.1.1-dev"),
+    appVersion = 3,
+    appMarketingVersion = (defaultText = "0.1.3-dev"),
     actions = [(input = (none = void), nounPhrase = (defaultText = "preview"), command = .command)],
     continueCommand = .command
   ),

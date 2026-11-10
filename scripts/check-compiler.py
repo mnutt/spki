@@ -7,7 +7,7 @@ import tempfile
 
 root = Path(__file__).resolve().parent.parent
 cli = root/'target/debug/spki'
-env = dict(os.environ, SPKI_ESBUILD=str(root/'build/tools/esbuild'))
+env = dict(os.environ)
 with tempfile.TemporaryDirectory() as temp:
     project = Path(temp)
     entry = project/'worker.ts'

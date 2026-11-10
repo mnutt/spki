@@ -7,4 +7,5 @@ struct RouteObjectId {
   format @0 :Text;
   nativeInterface @1 :Text;
   pathPrefix @2 :Text;
+  projectId @3 :Text;
 }

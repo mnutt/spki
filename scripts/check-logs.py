@@ -2,10 +2,10 @@
 """Actual worker console output -> Rust capture -> Cap'n Proto streaming response."""
 import json, os, pathlib, re, select, subprocess, sys, tempfile, time
 client = ['/opt/app/target/debug/grain-smoke',sys.argv[1]]
-def request(path, body=None, mode='api', ok=True):
+def request(path, body=None, mode='api', ok=True, stream=False):
     with tempfile.NamedTemporaryFile(mode='w') as file:
         if body is not None: json.dump(body,file); file.flush()
-        result = subprocess.run(client+[path,file.name if body is not None else '-',mode],capture_output=True,text=True,timeout=30)
+        result = subprocess.run(client+[path,file.name if body is not None else '-',mode],env=dict(os.environ,**({'SPKI_SMOKE_STREAM':'1'} if stream else {})),capture_output=True,text=True,timeout=30)
     assert (result.returncode == 0) == ok, (result.stdout,result.stderr)
     return result.stdout if ok else result.stderr
 
@@ -25,7 +25,7 @@ def close(process):
     process.terminate(); process.wait(timeout=5); process.stdout.close(); process.stderr.close()
 assert 'Forbidden' in request('__spki/v1/logs',mode='api-denied',ok=False)
 assert 'NotFound' in request('__spki/v1/logs',mode='web',ok=False)
-assert 'invalid log cursor' in request('__spki/v1/logs?after=bad',ok=False)
+assert 'invalid log cursor' in request('__spki/v1/logs?after=bad',ok=False,stream=True)
 source='''export default { fetch(request) {
  const path = new URL(request.url).pathname;
  if (path === '/throw') throw new Error('spki-exception-marker');

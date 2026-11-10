@@ -12,6 +12,7 @@ mod reload;
 mod routes;
 pub mod storage;
 mod streaming;
+pub mod workspace;
 use anyhow::{Result, ensure};
 use futures::AsyncReadExt;
 use isolate_protocol::{
@@ -21,6 +22,8 @@ use std::{cell::RefCell, rc::Rc};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
 pub const HOST_SHA256: &str = "94b04f0ed5ad0f3ff862dcadd1b7edfe6cad1717587a60b7d8e6775541b538b1";
+// A static keeps one embedded copy shared by the runtime and the CLI crate.
+pub static SDK_MODULES_JSON: &str = include_str!("../sdk/modules.json");
 pub mod transport;
 use transport::{HttpResponse, ResponseContext, ResponseState};
 pub fn bundle(js: &[u8]) -> Result<Vec<u8>> {
@@ -74,7 +77,7 @@ pub fn bundle(js: &[u8]) -> Result<Vec<u8>> {
     binding.set_name("STORAGE");
     binding.set_http_service("storage");
     let sdk: std::collections::BTreeMap<String, String> =
-        serde_json::from_str(include_str!("../sdk/modules.json"))?;
+        serde_json::from_str(SDK_MODULES_JSON)?;
     let wrapper = include_bytes!("../sdk/entry.js");
     let mut modules = source.init_modules((sdk.len() + 2) as u32);
     let mut entry = modules.reborrow().get(0);
