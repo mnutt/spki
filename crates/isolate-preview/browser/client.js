@@ -451,6 +451,9 @@ function browserRequiredPermissionNames(options = {}) {
 }
 
 function capnpCapabilityFromResult(result, name) {
+  if (result?._hasCap?.()) {
+    return nativeCapnpClientReference(result.cap, name);
+  }
   if (typeof result?.getCap === "function") {
     return result.getCap();
   }

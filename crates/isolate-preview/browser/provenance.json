@@ -1,10 +1,11 @@
 {
   "source": "Sandstorm isolates-rebased src/sandstorm/isolate/browser-client.js",
   "commit": "efe266500207bc437ea7cfbedaa5b2ee1936d442",
-  "sha256": "04328c4f03f16c14c725da263fd846d60c27e5ab0ceb92e9d594746e5ccf6ed0",
+  "sha256": "140afb4bfe78de673eaff5dfaaf57983941d376edf9f5f66a68daadf3cb8cf53",
   "localChanges": [
     "Close the RPC connection when its transport closes, rejecting outstanding calls.",
-    "Add connectApplication() using the session-scoped RPC application bootstrap."
+    "Add connectApplication() using the session-scoped RPC application bootstrap.",
+    "Read resolved capability pointers from generated claim results."
   ],
   "license": "Apache-2.0; see ../sdk/LICENSE-Sandstorm"
 }

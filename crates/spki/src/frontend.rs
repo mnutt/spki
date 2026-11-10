@@ -19,20 +19,12 @@ impl Compiler {
             let mut worker_source = source
                 .replace("/capnp-es/", "capnp-es/")
                 .replace("/__sandstorm/capnp/", "capnp:/");
-            for platform in [
-                "grain",
-                "util",
-                "identity",
-                "activity",
-                "powerbox",
-                "web-session",
-                "isolate-bridge",
-                "outbound-http-session",
-            ] {
-                worker_source = worker_source.replace(
-                    &format!("capnp:/sandstorm/{platform}.capnp.js"),
-                    &format!("capnp:/sandstorm/{platform}.capnp"),
-                );
+            for platform in self
+                .modules
+                .iter()
+                .filter(|name| name.starts_with("capnp:/sandstorm/") && name.ends_with(".capnp"))
+            {
+                worker_source = worker_source.replace(&format!("{platform}.js"), platform);
             }
             fs::write(&path, worker_source)?;
             self.schemas

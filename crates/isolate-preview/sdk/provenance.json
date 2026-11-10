@@ -64,11 +64,15 @@
     "sandstorm/util.capnp": "69689d9a7c09e35222dc6c3271dc32e6a6c587ae97b3fd3ea8d0c833d554d99a",
     "capnp:/sandstorm/web-session.capnp": "72759c54c4b62de55b759abdabf3ec1e09445b11d6889ecb6becb13f4daa4b99",
     "sandstorm/web-session.capnp": "72759c54c4b62de55b759abdabf3ec1e09445b11d6889ecb6becb13f4daa4b99",
-    "sandstorm:api": "b9755f1cd755256e2392ae46045cd7ffb2efe0886a4b38b5a9ed26644232001c",
+    "sandstorm:api": "63f2eb8d0b654fa37f0e010e5539dad2669f57af8cc9fa4aebdb151456f05ad2",
     "sandstorm-internal:validation": "e53a24514f98751399ee9cc0c1e77b545978bd60360801ebc1c54f2d029731d4",
-    "sandstorm-internal:capnp-runtime": "d5c4251f407413c404727c5d86d6a063418d0312689ddd649f73e74be7f88fef"
+    "sandstorm-internal:capnp-runtime": "d5c4251f407413c404727c5d86d6a063418d0312689ddd649f73e74be7f88fef",
+    "sandstorm/api-session.capnp": "d123de92fda5e9f88f01788a973cf845a27d9440ebd3d9d0b72119f5e48df0fe",
+    "capnp:/sandstorm/api-session.capnp": "d123de92fda5e9f88f01788a973cf845a27d9440ebd3d9d0b72119f5e48df0fe"
   },
   "localChanges": [
-    "Regenerate isolate-bridge.capnp with the additive SPKI getApplication method."
+    "Regenerate isolate-bridge.capnp with the additive SPKI getApplication method.",
+    "Generate the wire-compatible ApiSession projection for Powerbox HTTP capabilities.",
+    "Use resolved claim/restore capabilities and reject undeclared application permissions without a legacy HTTP API binding."
   ]
 }

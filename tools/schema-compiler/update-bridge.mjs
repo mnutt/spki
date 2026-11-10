@@ -7,7 +7,7 @@ import {compileAll} from '@mnutt/capnp-es/compiler';
 
 const schemaRoot = 'crates/isolate-protocol/schema';
 const request = spawnSync('capnp', ['compile', `-I${schemaRoot}`, `--src-prefix=${schemaRoot}`,
-  '-o-', `${schemaRoot}/sandstorm/isolate-bridge.capnp`]);
+  '-o-', `${schemaRoot}/sandstorm/isolate-bridge.capnp`, `${schemaRoot}/sandstorm/api-session.capnp`]);
 if (request.error) throw request.error;
 if (request.status !== 0) throw new Error(request.stderr.toString());
 const {files} = await compileAll(request.stdout, {
@@ -20,10 +20,11 @@ const {files} = await compileAll(request.stdout, {
 });
 const sdkRoot = 'crates/isolate-preview/sdk';
 const modules = JSON.parse(readFileSync(`${sdkRoot}/modules.json`, 'utf8'));
-const source = files.get('sandstorm/isolate-bridge.js');
-if (!source) throw new Error('Missing generated bridge');
-for (const key of Object.keys(modules)) {
-  if (key.endsWith('sandstorm/isolate-bridge.capnp')) modules[key] = source;
+for (const name of ['isolate-bridge', 'api-session']) {
+  const source = files.get(`sandstorm/${name}.js`);
+  if (!source) throw new Error(`Missing generated ${name}`);
+  modules[`sandstorm/${name}.capnp`] = source;
+  modules[`capnp:/sandstorm/${name}.capnp`] = source;
 }
 writeFileSync(`${sdkRoot}/modules.json`, JSON.stringify(modules) + '\n');
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
