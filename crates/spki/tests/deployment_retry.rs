@@ -41,6 +41,9 @@ impl Server {
                     }
                     Err(error) => panic!("accept: {error}"),
                 };
+                // macOS inherits the listener's nonblocking mode on accepted sockets.
+                // Only accept polls; reading each HTTP request must block.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();
@@ -112,7 +115,10 @@ impl Server {
 impl Drop for Server {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        self.thread.take().unwrap().join().unwrap();
+        let result = self.thread.take().unwrap().join();
+        if !thread::panicking() {
+            result.unwrap();
+        }
     }
 }
 struct Watcher(Child);
